@@ -284,6 +284,45 @@ gh pr comment <number> --body "..."
 
 ---
 
+# What Did I Do Today
+
+Trigger:
+When I ask something like:
+
+what did i do today
+what have i worked on today
+summarize my day
+what did we do today
+
+Behavior:
+Look at everything that happened in this project today and give a short, plain-English summary of what was worked on — no technical jargon.
+
+Workflow:
+
+1. Get today's date from the environment.
+
+2. Check git log across all branches for commits authored today:
+   `git log --all --since="midnight" --until="now" --oneline --format="%h %s"`
+
+3. Check for any uncommitted changes or work in progress:
+   `git status` and `git diff --stat`
+
+4. Synthesize everything into a few casual sentences describing what was worked on — as if explaining to a non-technical friend or writing a standup note.
+
+Rules:
+
+- Keep it short: 2–5 sentences max.
+- No technical terms, no function names, no file paths, no jargon.
+- Focus on the "what" and "why" from a product/feature perspective, not implementation details.
+- If nothing was committed yet but there are changes in progress, mention that too.
+- Do not list commits or bullet points — write it as natural prose.
+
+Example output:
+
+"Today you added an automatic cleanup job that removes stale gift orders that got stuck during checkout. You also set up a PR for it and got it reviewed."
+
+---
+
 # Commit Message Convention
 
 Trigger:
