@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "Bash(gh api:*)",
+      "Bash(curl:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(bunx tsc:*)",
+      "Bash(bunx biome:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(xcrun simctl:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(mkdir -p /Users/guilhermereis/Desktop/clones/shopit-monorepo/.claude/ai)",
+      "Bash(mv /Users/guilhermereis/.claude/ai/* /Users/guilhermereis/Desktop/clones/shopit-monorepo/.claude/ai/)",
+      "Bash(rmdir /Users/guilhermereis/.claude/ai)",
+      "Bash(git rebase:*)",
+      "Bash(gh search:*)",
+      "Bash(python3:*)",
+      "Skill(review-pr)"
+    ]
+  }
+}
