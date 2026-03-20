@@ -1,6 +1,6 @@
 ---
 name: weekly-report
-description: Generate a weekly work report based on PRs created by the user. Use when asked for a weekly report, what was done this week, or a summary of recent work.
+description: Generate a weekly work report based on PRs created by the user. Use ONLY when the user explicitly asks for a "weekly report" or asks what was done "this week" / "last week". Do NOT trigger for questions about today, a single day, or general recent activity.
 allowed-tools: Bash(gh *), Bash(date *), Bash(python3 *)
 ---
 
