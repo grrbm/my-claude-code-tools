@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcrun *)",
+      "Bash(idb *)",
+      "Bash(idb_companion *)",
+      "Bash(defaults *)",
+      "Bash(python3 *)",
+      "Bash(kill *)",
+      "Bash(sleep *)",
+      "Bash(rm *)",
+      "Bash(ls *)",
+      "Bash(bunx tsc *)",
+      "Bash(mkdir *)",
+      "Read(/tmp/*)"
+    ]
+  },
+  "env": {
+    "PATH": "/Users/guilhermereis/Library/Python/3.9/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  }
+}
