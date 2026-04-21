@@ -16,3 +16,4 @@ Rules:
 - Always capture a fresh screenshot — never reuse a previous one.
 - Do not ask for confirmation before taking the screenshot.
 - After reading the image, respond based on its contents as if looking at it in real time.
+- **This skill is for observation only.** Never derive tap coordinates from this screenshot and never attempt navigation (idb ui tap) after running it. If the user's request requires navigating to a specific screen or tapping UI elements, use the `screenshot-screen` skill instead — it has the mandatory grid overlay technique that produces accurate coordinates.

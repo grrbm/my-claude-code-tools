@@ -42,7 +42,11 @@ Description template (fill in all sections — never leave placeholder text):
 
 Workflow:
 
-1. If the team ID is unknown, fetch it: `query { teams { nodes { id name } } }`
+0. Read the API key: `grep "^LINEAR_API_KEY" /Users/guilhermereis/Desktop/clones/shopit-monorepo/.env.local | cut -d= -f2`. Use this value as the `Authorization` header for all curl requests.
+1. Known IDs (skip fetching unless something changes):
+   - ShopIt team ID: `b93061fe-be5a-4ea3-9421-4041918d360a`
+   - Backlog state ID: `0ed76cfa-23d6-43f9-9489-2800adefc962`
+   - If these ever fail, re-fetch: teams via `{ teams { nodes { id name } } }`, states via `{ team(id: "...") { states { nodes { id name } } } }`
 2. Build the title and description from the provided input.
 3. Create the issue via the Linear GraphQL mutation:
 

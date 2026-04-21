@@ -10,8 +10,13 @@ Implement the Linear task at: $ARGUMENTS
 Workflow:
 
 1. Parse the Linear issue URL.
-2. Fetch the issue details from Linear (using `LINEAR_API_KEY`).
-3. Fetch all comments from the issue.
+2. Read the `LINEAR_API_KEY` by running:
+   ```bash
+   grep '^LINEAR_API_KEY=' /Users/guilhermereis/Desktop/clones/shopit-monorepo/.env.local | tail -1 | cut -d'=' -f2
+   ```
+   Use this value directly in the Authorization header — never use `$LINEAR_API_KEY` from the environment, as it may be stale.
+3. Fetch the issue details from Linear using the key from step 2.
+4. Fetch all comments from the issue.
 4. Checkout `main` and pull the latest from origin.
 5. Create a branch from the updated `main` using:
 
