@@ -60,19 +60,25 @@ Workflow:
 4. Check for any uncommitted changes or work in progress as a supplement:
    `git status` and `git diff --stat`
 
-5. Synthesize into bullet points describing what was worked on — as if explaining to a non-technical friend or writing a standup note.
+5. Synthesize into exactly two sentences describing what was worked on — as if explaining to a non-technical friend or writing a standup note.
+
+6. Write the output to a single markdown file at:
+   `/Users/guilhermereis/Desktop/clones/shopit-monorepo/.claude/daily-summary.md`
+   Overwrite the file each time. Then tell the user the summary is ready and print it inline too.
 
 Rules:
 
-- Use bullet points — one bullet per meaningful area of work.
-- No technical terms, no function names, no file paths, no jargon.
+- Respond in exactly two sentences, no more, no less, each on its own line (no bullet points, no line breaks within sentences).
+- Write in first person but never use "I" or "me" — start sentences with the action directly (e.g. "Fixed a bug…", "Merged three updates…").
+- No technical terms, no function names, no file paths, no PR numbers, no jargon.
 - Focus on the "what" and "why" from a product/feature perspective, not implementation details.
 - Only report work that I (the user) did — not other contributors.
-- If memory is empty or has nothing for today, say so honestly rather than falling back to git log.
+- If covering two days ("today and yesterday"), use one sentence per day.
+- If memory is empty or has nothing for today, say so honestly in one sentence rather than falling back to git log.
 - If nothing was committed yet but there are changes in progress, mention that too.
 - Never mention the `new-apis-examples/` folder or any untracked folders that are clearly experiments/scratch work.
 
-Example output:
+Example file output (two plain lines, no bullets, no blank lines between):
 
-- Added an automatic cleanup job that removes stale gift orders that got stuck during checkout
-- Set up a PR for it and got it reviewed
+Today fixed a bug where the comment box was being hidden behind the keyboard when users tried to leave a comment.
+Yesterday merged three updates including a visual refresh across the app and a fix for how order totals were being displayed.
