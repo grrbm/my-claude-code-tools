@@ -22,6 +22,8 @@ Separately, look for a self-review directive anywhere in the free-form instructi
 
 Resolve this into a simple per-PR boolean before Step 2: for each PR URL in the list, `selfReview = true` if the directive is `all`, or if the directive's subset names this PR; `selfReview = false` otherwise (including the default `none` case).
 
+**State the resolved directive out loud before starting Step 2** — one plain line, always, regardless of which case it resolved to: e.g. `Self-review: none (not requested)`, `Self-review: all N PRs`, or `Self-review: PR #491, #502 only (of N total)`. This must appear every run, including the default case — never leave it implicit just because nothing was mentioned.
+
 ## Step 2 — Process each PR strictly in order
 
 For each PR URL, in the order given:
@@ -84,4 +86,4 @@ For each PR URL, in the order given:
 - Never force-push.
 - Never prefix `git`/`gh` commands with `cd /path/to/repo &&` — the working directory is already the project root.
 - Never raise or bypass the 6-round self-review auto-continue cap, and never skip the counter-file wait as a shortcut to reach the next PR sooner — the whole point of waiting is to keep the shared working directory conflict-free.
-- At the end, report one line per PR covering both halves: implement-review outcome (implemented+pushed, nothing pending, or failed with reason) and, if selected, self-review outcome (chain finished clean, chain finished after N rounds, hit the 6-round cap, terminal-bridge unreachable, or timed out after 2 hours).
+- At the end, first restate the resolved self-review directive from Step 1 (same line as before Step 2 — none / all / the specific subset), then report one line per PR covering both halves: implement-review outcome (implemented+pushed, nothing pending, or failed with reason) and, if selected, self-review outcome (chain finished clean, chain finished after N rounds, hit the 6-round cap, terminal-bridge unreachable, or timed out after 2 hours).
