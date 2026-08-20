@@ -1,6 +1,6 @@
 ---
 name: self-review-pr
-description: Review a GitHub pull request created by the user themselves. Use when the user asks to review "my PR", "my pull request", "the PR I created/opened/submitted", or asks for a "self-review". Acts as a second pair of eyes — reads the full diff and all existing comments, then writes a consolidated review focused on blind spots, missed edge cases, and things the author is likely to overlook due to familiarity with their own code, to a local file (never posted to the PR), and automatically implements the findings. Do NOT use this for reviewing someone else's PR — use the review-pr skill instead.
+description: Review a GitHub pull request created by the user themselves. Use when the user asks to review "my PR", "my pull request", "the PR I created/opened/submitted", or asks for a "self-review". Acts as a second pair of eyes — reads the full diff and all existing comments, then writes a consolidated review focused on blind spots, missed edge cases, and things the author is likely to overlook due to familiarity with their own code, to a local file (never posted to the PR), and automatically implements the findings. Do NOT use this for reviewing someone else's PR — use the review-multiple-prs skill instead.
 argument-hint: <pr-url>
 allowed-tools: Bash(gh *), Bash(git *), Bash(touch *), Bash(curl *), Write(/private/tmp/self-review-*.md)
 ---

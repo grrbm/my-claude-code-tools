@@ -20,7 +20,7 @@
       "Bash(git rebase:*)",
       "Bash(gh search:*)",
       "Bash(python3:*)",
-      "Skill(review-pr)",
+      "Skill(review-multiple-prs)",
       "Bash(find /Users/guilhermereis/Desktop/clones/shopit-monorepo/apps/mobile/components -type f \\\\\\(-name *button* -o -name *input* \\\\\\) -iname *.tsx -o -iname *.ts)",
       "Bash(pip3 list:*)",
       "Bash(ls -t ~/Desktop/Screenshot*)",
