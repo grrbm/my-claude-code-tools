@@ -2,6 +2,7 @@
 name: hotfix-pr
 description: Ship a hotfix PR straight from a plain-text description, with zero Linear involvement — no issue created, none looked up, nothing linked in the PR. Use when asked to hotfix something, "hotfix-pr", "ship a hotfix", or open a PR for a fix that doesn't have and shouldn't get a Linear ticket.
 argument-hint: <description of what to fix>
+allowed-tools: Bash(git *), Bash(gh *), Bash(node *), Read, Edit, Write
 ---
 
 Ship a hotfix PR for: $ARGUMENTS — same destination as `create-pr` (a properly titled/described PR, pushed and opened via `gh`), but this pipeline must never touch Linear: no issue created, no issue fetched, no Linear API call anywhere in the run.
@@ -26,7 +27,17 @@ Implement the change described in `$ARGUMENTS` directly against the codebase. Th
 
 Commit the change with a concise message describing what changed and why, in this repo's usual style (see `git log` for recent examples). Only stage the files that are actually part of this fix — leave any unrelated pre-existing working-tree changes untouched.
 
-## Step 4 — Push and open the PR
+## Step 4 — Docs-sync preflight (before pushing)
+
+Same reasoning as `create-pr`: this repo's `main` branch ruleset has `dismiss_stale_reviews_on_push: true`, so any commit pushed after review dismisses approvals — get docs coverage right before the PR exists, not after. Run:
+
+```bash
+node scripts/check-docs-sync.mjs --validate
+```
+
+If it reports `<file>: no page lists it under "sources" — add it to the page that describes it, or exempt it in apps/docs/not-documented.json with a reason` for any file this fix adds or touches, either add the file's path to the closest-matching existing page's `sources:` frontmatter (`apps/docs/content/**/*.mdx`), or add a reasoned entry (10+ chars, not a placeholder) to `apps/docs/not-documented.json` (create it as `{}` if missing). Fold that fix into Step 3's commit — nothing has been pushed yet. Re-run until it prints `Docs valid: N page(s).`.
+
+## Step 5 — Push and open the PR
 
 ```bash
 git push -u origin HEAD
@@ -34,37 +45,53 @@ git push -u origin HEAD
 
 Title format: `<type>(<scope>): <description>` — same `type`/`scope` inference rules as `create-pr` (type from the nature of the change: `feat`, `fix`, `refactor`, etc.; scope from files touched: `mobile`, `web`, `convex`, `shared`, combined with `/` if more than one). There is no `SHO-<number>` segment, since there is no ticket.
 
-Use this body template — the same shape as `create-pr`'s, minus the Linear-specific section:
+Use this body template — `.github/pull_request_template.md`'s six required sections (Danger, `.github/danger/rules.ts`, fails the build if any is missing, misheaded, or a placeholder), plus the same reviewer-focus/testing content the old template carried, folded in as extra trailing sections:
+
+- `## What this changes (plain English)` must be the very first content line of the body. 3-5 plain sentences, no file names, acronyms expanded. Never N/A.
+- `## Linear Issue` — this skill never touches Linear, so this is always `N/A — hotfix, no Linear ticket` (writing that line is not "touching Linear": no API call, no SHO number, nothing looked up or created — it only satisfies Danger's required heading).
+- `## Merge invariant` — one sentence on what must stay true for this to be safe, then risk areas/where reviewers should look. Can never be N/A.
+- `## QA` — real verification evidence, or exactly `Not visually verified — <reason, 10+ chars, not a placeholder like "not tested">`.
+- `## Deployment Notes` — prose or `N/A`.
+- `## Docs` — prose on what was updated, or exactly `Docs: not needed — <reason, 10+ chars>`, or `N/A`.
 
 ```bash
 gh pr create --title "<title>" --body "$(cat <<'EOF'
-## Short Description
-<brief description>
+## What this changes (plain English)
+<3-5 plain-English sentences: what changes and why, no file names, acronyms expanded>
 
-## What should reviewers focus on?
-<gotchas, non-obvious changes, trade-offs, or assumptions made in place of a Linear ticket to clarify against>
+## Linear Issue
+N/A — hotfix, no Linear ticket
 
-## How to manually test this
-<specific steps and edge cases>
+## Merge invariant
+<one sentence on what must remain true for this to be safe, then risk areas/where reviewers should look>
+
+## QA
+<verification evidence, or exactly "Not visually verified — <reason>">
 
 ## Deployment Notes
 <schema changes, new API keys, feature flags, deployment order, or N/A>
 
-## Performance/Security Implications
-<new actions, auth changes, performance impacts, or N/A>
+## Docs
+<pages updated, or exactly "Docs: not needed — <reason>", or N/A>
 
-## App/Platform Specific Notes
-<mobile/web/convex/shared considerations, or N/A>
-
-## Screenshots or Video
-<visual evidence or N/A>
+## What should reviewers focus on?
+<gotchas, non-obvious changes, trade-offs, or assumptions made in place of a Linear ticket to clarify against>
 EOF
 )"
 ```
 
+## Step 6 — Gate check
+
+```bash
+git fetch origin main --quiet
+PR_BODY="$(gh pr view --json body -q .body)" node scripts/check-docs-sync.mjs --base origin/main --head HEAD
+```
+
+If it prints `FAIL`, fix the `## Docs` opt-out line (edit via `gh pr edit --body-file`, no push needed) or update the listed page now, before anyone reviews.
+
 Capture the returned PR URL.
 
-## Step 5 — Report
+## Step 7 — Report
 
 Return the PR URL. Nothing else needs reporting — there's no Linear artifact to mention because none was ever created.
 

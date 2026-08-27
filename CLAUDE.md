@@ -44,6 +44,12 @@ Without `additionalDirectories`, even an exact-match `Write(/private/tmp/pr-revi
 
 Note: on macOS `/tmp` is a symlink to `/private/tmp` — add both to be safe.
 
+## No AI attribution in commit messages
+
+Never add `Co-Authored-By: Claude ...`, `Generated with Claude Code`, a session trailer, or any other assistant-identity attribution to a commit message — including in `implement-review`/`implement-self-review`-style skill commits. This repo has a required CI gate ("No assistant attribution") that scans every commit message in a PR and fails the check if it finds one, blocking merge. Authorship belongs to the human contributor.
+
+If a commit with this trailer has already been pushed: amend it (`git commit --amend`, or an interactive rebase if it isn't the tip) to strip the trailer, then force-push — confirm with the user first, since force-push rewrites shared history.
+
 ## PermissionRequest hook output format
 
 When writing a `PermissionRequest` hook to auto-allow a command, the correct output format is:
