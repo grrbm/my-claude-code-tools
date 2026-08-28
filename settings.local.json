@@ -45,7 +45,7 @@
       "Bash(env)",
       "Bash(grep -n \"FriendOptionsSheet\\\\|friendOptions\\\\|BottomSheetModal\" apps/mobile/app/profile/[userId].tsx)",
       "Bash(git fetch:*)",
-      "Skill(implement-review)",
+      "Skill(implement-multiple-reviews)",
       "Skill(linear-implement-task)",
       "Bash(grep -n \"FlatList\\\\|from 'react-native'\" /Users/guilhermereis/Desktop/clones/shopit-monorepo/apps/mobile/app/profile/[userId].tsx)",
       "Bash(grep -v \"^$\")",
