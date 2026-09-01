@@ -30,17 +30,19 @@ Once the PR is open, invoke the `self-review-pr` skill, passing that PR URL as i
 
 `self-review-pr`'s own auto-continue chain (via `implement-self-review`) can open a **separate, fresh terminal** — with no context from this session — to keep running further self-review rounds on the current ticket's PR after this skill's Step 3 call already returns. Critically, that terminal runs `claude` against the **same shared working directory** this skill uses for every ticket (there's no per-ticket worktree isolation here). If this skill started implementing ticket 2 while that terminal is still mid-round on ticket 1, two `claude` processes would be doing git operations (checkouts, commits) in the same working directory at the same time — exactly the collision this pipeline must not risk. So: before moving on to the next ticket, wait until this ticket's entire self-review chain — however many rounds it takes, potentially across several separate terminals — has actually finished.
 
-Detect that using the exact same round-counter file `self-review-pr`/`implement-self-review` already maintain for this purpose: `/tmp/.claude-self-review-rounds-<owner>-<repo>-<number>` (owner/repo with the `/` between them replaced by `-`; `<number>` is the PR number Step 2's URL contains).
+Detect that using the deterministic, PR-scoped **chain-completion marker** `self-review-pr`/`implement-self-review` write on whichever exit path ends the chain (clean first pass, every-item-deferred, 6-round cap, terminal-bridge-unreachable — all write it; opening a next round does not): `/tmp/.claude-self-review-chain-done-<owner>-<repo>-<number>` (owner/repo with the `/` between them replaced by `-`; `<number>` is the PR number Step 2's URL contains). Do not infer completion from the round-counter file — a clean first pass never creates it.
 
-1. Immediately after Step 3's `self-review-pr` call returns, check with the `Read` tool whether this file exists.
-   - If it does **not** exist: round 1 came back completely clean (nothing blocking or important) — `self-review-pr` never invoked `implement-self-review`, no further terminal was opened, and the chain is already fully finished. Move on to the next ticket right away.
-   - If it **does** exist: a chain is in progress (or a background terminal just finished a round and is about to open the next one) — proceed to step 2.
-2. Wait for the chain to finish. It's done once the counter file is either gone/empty (`self-review-pr` clears it the moment a round comes back clean) or its value exceeds 6 (`implement-self-review`'s own `MAX_AUTO_ROUNDS` cap — at that point it stops without opening another terminal). Run a single Bash command in the background for this rather than polling manually — you'll be notified when it exits:
+Before Step 3's `self-review-pr` call, `rm -f` this marker (and `/tmp/.claude-self-review-rounds-<owner>-<repo>-<number>`) so neither is stale.
+
+1. Immediately after Step 3's `self-review-pr` call returns, check with the `Read` tool whether the marker exists.
+   - If it **does**: the chain finished entirely in-process (round 1 clean, or every item deferred, with no further terminal opened). Move on to the next ticket right away.
+   - If it does **not**: `implement-self-review` pushed fixes and opened a next-round terminal that's still running — proceed to step 2.
+2. Wait for the marker to appear. Run a single Bash command in the background rather than polling manually — you'll be notified when it exits:
    ```bash
-   until [ ! -s /tmp/.claude-self-review-rounds-<owner>-<repo>-<number> ] || [ "$(cat /tmp/.claude-self-review-rounds-<owner>-<repo>-<number> 2>/dev/null)" -gt 6 ]; do sleep 60; done
+   end=$(( $(date +%s) + 7200 )); until [ -e /tmp/.claude-self-review-chain-done-<owner>-<repo>-<number> ] || [ "$(date +%s)" -ge "$end" ]; do sleep 15; done
    ```
-   Substitute the real owner/repo/number, and pass `run_in_background: true`. Do not sleep-poll this file yourself in a loop of your own turns — wait for the background command's completion notification.
-3. Safety valve: cap the wait at 2 hours total, in case something got silently stuck (e.g. the Terminal Bridge extension failing to open the next terminal). If it's still unresolved after that, stop waiting, note it plainly in this ticket's line of the final report (e.g. "self-review chain for PR #X hadn't finished after 2 hours — moved on without waiting further"), and proceed to the next ticket anyway rather than hanging the whole batch indefinitely.
+   Substitute the real owner/repo/number, and pass `run_in_background: true`. Do not sleep-poll yourself in a loop of your own turns — wait for the background command's completion notification.
+3. The 7200-second bound is only a safety valve for a genuinely stuck chain (e.g. the Terminal Bridge failing to open a follow-up round's terminal, so no one writes the marker). If the loop hits it with no marker, stop waiting, note it plainly in this ticket's line of the final report (e.g. "self-review chain for PR #X hadn't finished after 2 hours — moved on without waiting further"), and proceed to the next ticket anyway rather than hanging the whole batch indefinitely.
 
 If this is the last ticket (or the only ticket given), skip this wait — there's no next ticket's implementation step it could collide with, so let the chain trail off in the background exactly as it already does for a single-ticket run today.
 
