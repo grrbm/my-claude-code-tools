@@ -1,108 +1,112 @@
 ---
 name: post-screenshots-to-pr
-description: Given a plain-English description of what to capture and a target GitHub PR, take the screenshot(s) and embed them directly in that PR's description — uploaded and rendering inline, no manual drag-and-drop. Use when asked to "screenshot X and put it in the PR", "add a screenshot of Y to PR #N's description", "attach this to the PR body", or "post screenshots to the PR". For a full written QA report + a new draft PR, use report-with-pictures instead; this skill only edits an existing PR's description. Composes the agent-browser skill for the upload.
+description: Given a plain-English description of what to capture and a target GitHub PR, take the screenshot(s) and embed them in that PR's description — uploaded and rendering inline, no manual drag-and-drop. Use when asked to "screenshot X and put it in the PR", "add a screenshot of Y to PR #N's description", "attach this to the PR body", or "post screenshots to the PR". For a full written QA report + a new draft PR, use report-with-pictures instead; this skill only edits an existing PR's description. Composes the agent-browser skill for the image upload only.
 allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*), Bash(gh *), Bash(git *), Bash(python3:*), Bash(xcrun *), Read
 ---
 
 # Skill: Post Screenshots To PR
 
 Takes a description of what the user wants a screenshot of, captures it, and writes it into an
-existing PR's **description** (not a comment) with the image uploaded and rendering — the same
-result a human gets by dragging a file into GitHub's markdown editor.
+existing PR's **description** (not a comment), image uploaded and rendering.
 
-GitHub has **no API** for uploading images to a PR body. The only mechanism is a real,
-authenticated browser session POSTing to the hidden `<input type="file">` wired to the markdown
-editor. `agent-browser` driving a logged-in Chrome does exactly that. This was verified working
-end-to-end on 2026-09-01 (ShopIt PR #572).
+## The one hard constraint
+
+GitHub has **no API** to upload an image to a PR body. The only thing that can mint a
+`https://github.com/user-attachments/assets/<uuid>` URL is a real, authenticated browser session
+POSTing to the markdown editor's hidden `<input type="file">`. `agent-browser` driving a logged-in
+Chrome does that.
+
+**But the browser is used ONLY to mint that URL.** Everything else — reading the current body,
+assembling the new body, saving it — goes through `gh`. Do **not** read the body back out of the
+browser textarea and do **not** type the new body into it. That path corrupted PR #572 once:
+`agent-browser eval` JSON-encodes its own return value, so `eval("JSON.stringify(ta.value)")` comes
+back **double-encoded**, and one decode leaves literal `\n` and wrapping quotes in the text.
 
 ---
 
 ## Step 0 — Resolve inputs
 
-- **What to capture**: the user's description (e.g. "the phone-only auth sheet", "the empty cart",
-  "the gift claim screen after claiming"). If it names a specific screen that isn't currently on
-  screen, navigation is out of scope here — either ask the user to get the app to that screen, or
-  (for the iOS simulator) hand off to the `screenshot-screen` skill to navigate + capture, then
-  come back to Step 3 with its PNG.
-- **Target PR**: a URL or number if given. Otherwise default to the PR for the current branch:
-  `gh pr view --json number,url,headRefName`. Confirm with the user if there's no PR for the branch.
-- Always `unset GITHUB_TOKEN` before any `gh` call (a PAT in the env overrides the keyring OAuth
-  token and can 404 on private repos).
+- **What to capture**: the user's description (e.g. "the phone-only auth sheet", "the empty cart").
+  If it names a screen that isn't currently on screen, navigation is out of scope — ask the user to
+  get the app there, or hand off to `screenshot-screen` (iOS simulator) to navigate + capture, then
+  resume at Step 2 with its PNG.
+- **Target PR**: URL or number if given; else the PR for the current branch
+  (`gh pr view --json number,url,headRefName`). Confirm with the user if the branch has no PR.
+- `unset GITHUB_TOKEN` before every `gh` call (a PAT in env overrides the keyring OAuth token and
+  404s on private repos).
 
-## Step 1 — Capture the screenshot(s)
-
-Default source for this monorepo is the booted **iOS simulator**:
+## Step 1 — Capture the current body via `gh` (NOT the browser)
 
 ```bash
-xcrun simctl io booted screenshot /tmp/shot.png
+gh pr view <N> --repo <owner>/<repo> --json body -q .body > /tmp/psp-body-original.md
 ```
 
-Save each final image into the harness scratchpad (or `~/Desktop/<project>-shots-<date>/` if the
-user wants to keep them) with **descriptive, numbered filenames in the order they'll appear**:
-`1-auth-sheet-phone-only.png`, `2-cart-empty.png`, … — the upload step re-derives URLs from upload
-order, so this ordering is mechanical, not cosmetic.
+This is the canonical, clean source. Keep it untouched; Step 6 builds the new body from this file.
 
-Read each PNG back with the Read tool and write a one-line factual alt/caption for each (what is
-actually on screen). Don't editorialize.
+## Step 2 — Capture the screenshot(s)
 
-If the user also wants the files delivered to them, use `SendUserFile`.
+Default source in a mobile repo is the booted **iOS simulator**:
 
-## Step 2 — Get an authenticated GitHub browser session
+```bash
+xcrun simctl io booted screenshot /tmp/psp-1.png
+```
 
-`agent-browser` launches a **fresh, empty Chromium profile by default** — it is *not* your everyday
-Chrome and has none of your logins. Plain headless will always load GitHub logged-out (a private
-repo then renders as "Page not found"). Pick one of these, in order of preference:
+Save each final image with **descriptive, numbered names in display order**:
+`1-auth-sheet-phone-only.png`, `2-cart-empty.png`, … — the upload step derives URLs from upload
+order, so this ordering is mechanical.
 
-1. **`--auto-connect` to your already-running Chrome** (nothing to quit, if it was started with a
-   debug port):
-   ```bash
-   # one-time, in a terminal the user runs — restarts their Chrome with a debug port:
-   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222
-   # then:
-   agent-browser --auto-connect open "<PR_URL>"
-   ```
-   ⚠️ `--remote-debugging-port` exposes full control of that Chrome to any local process. Trusted
-   machines only; close it when done.
+`Read` each PNG and write a one-line **factual** alt/caption (what is on screen). No editorializing.
+If the user wants the files too, `SendUserFile` them.
 
-2. **Persistent dedicated profile** — a Chrome user-data dir that is *not* your main one, logged in
-   to GitHub once:
-   ```bash
-   agent-browser --profile ~/.agent-browser-profiles/github --headed open https://github.com/login
-   # user logs in + 2FA once in the visible window; reused on every later run
-   agent-browser --profile ~/.agent-browser-profiles/github open "<PR_URL>"
-   ```
+## Step 3 — Get an authenticated GitHub browser session
 
-3. **Export cookies once, then load state** (lighter than #1 long-term):
-   ```bash
-   agent-browser --auto-connect state save ~/.agent-browser-profiles/github-auth.json
-   agent-browser --state ~/.agent-browser-profiles/github-auth.json open "<PR_URL>"
-   ```
+`agent-browser` launches a **fresh, empty Chromium profile** by default — not your everyday Chrome,
+no logins. A private repo then renders as "Page not found". Modern Chrome (**136+**, so anything
+current) **ignores `--remote-debugging-port` on the default profile** — a deliberate
+anti-cookie-theft mitigation — so `--auto-connect` / `state save` against your real running Chrome
+**do not work** and no restart changes that. The two paths that do:
 
-4. **Fallback that worked 2026-09-01 — real Chrome binary, Chrome fully quit.** Chrome ≥129 on
-   macOS uses **app-bound cookie encryption**: agent-browser's bundled Chrome-for-Testing binary
-   *cannot* decrypt your real `Default` profile's cookies, so `--profile "Default"` alone yields a
-   logged-out session. Pointing `--executable-path` at the real Chrome binary *can* decrypt them,
-   but only if your everyday Chrome is not holding the profile lock:
-   ```bash
-   osascript -e 'tell application "Google Chrome" to quit'   # clean quit, session restorable
-   # wait for the process to exit, then:
-   agent-browser close --all
-   agent-browser --executable-path "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-     --profile "Default" open "https://github.com/settings/profile"
-   # verify: eval `document.querySelector('meta[name="user-login"]').content` is the expected login
-   ```
-   After the upload: `agent-browser close --all` then `open -a "Google Chrome"` so the user gets
-   their browser back (tabs restore via "Continue where you left off").
+| Path | Touches your Chrome? | Setup | Repeatable silently? |
+|---|---|---|---|
+| **Dedicated profile** | never | one-time GitHub login in a visible window (~1 min + 2FA) | ✅ fully headless after |
+| **Quit-Chrome + real binary** | quits it ~15s per run | none | n/a |
 
-**Never quit the user's Chrome without asking.** Present options 1–4 and let them choose.
-Confirm which profile has GitHub write access to the target repo (Chrome's
+**Dedicated profile (preferred):**
+```bash
+mkdir -p ~/.agent-browser-profiles
+# First time only — visible window, user signs in to github.com once:
+agent-browser --profile ~/.agent-browser-profiles/github --headed open https://github.com/login
+# Every run after (headless, silent):
+agent-browser --profile ~/.agent-browser-profiles/github open "<PR_URL>"
+```
+
+**Quit-Chrome fallback** (Chrome ≥129 app-bound cookie encryption means agent-browser's bundled
+Chrome can't decrypt your real profile's cookies — must use the real Chrome binary, and it must not
+be already running):
+```bash
+osascript -e 'tell application "Google Chrome" to quit'    # clean quit; tabs restore later
+# poll until the process is gone, then:
+agent-browser close --all
+agent-browser --executable-path "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --profile "Default" open "https://github.com/settings/profile"
+```
+After the run: `agent-browser close --all` then `open -a "Google Chrome"`.
+
+**Never quit the user's Chrome without asking.** Present both paths and let them pick. Confirm the
+GitHub-authed profile has write access to the target repo (Chrome's
 `~/Library/Application Support/Google/Chrome/Local State` → `profile.info_cache` maps profile dirs
-to account emails). Wrong profile → "Page not found" on a private repo, a cheap safe signal.
+to emails). Verify login after opening:
+```bash
+agent-browser eval --stdin <<'EOF'
+document.querySelector('meta[name="user-login"]')?.content || null
+EOF
+```
+Expect the user's GitHub login, not `null`.
 
 Gotcha: `--profile` / `--executable-path` are **ignored if an agent-browser daemon is already
-running** ("⚠ --profile ignored: daemon already running"). Run `agent-browser close --all` first.
+running** ("⚠ --profile ignored: daemon already running"). `agent-browser close --all` first.
 
-## Step 3 — Open the PR and the description editor
+## Step 4 — Open the description editor and find the file input
 
 ```bash
 export AGENT_BROWSER_SESSION="psp-$(date +%s)"
@@ -111,131 +115,143 @@ agent-browser wait --load networkidle
 agent-browser snapshot -i -c
 ```
 
-- The PR description is the **first comment, authored by the PR author**. In the snapshot its
-  `button "Show options"` sits right after the `heading "<author> commented …"` and before the
-  first body heading. Do **not** grab a bot comment's "Show options" (Vercel/Danger/etc.), and do
-  **not** use `button "Edit title"` (that's the title pencil).
-- `agent-browser click @e<N>` on that "Show options" button → then `click` the `menuitem "Edit comment"`.
-
-## Step 4 — Find the real hidden file input
-
-After the editor opens, enumerate — don't hardcode the numeric id (it's per-issue):
-
-```bash
-agent-browser eval --stdin <<'EOF'
-JSON.stringify({
-  textareas: [...document.querySelectorAll('textarea')].map(t=>({id:t.id,name:t.name,len:t.value.length,vis:t.offsetParent!==null})),
-  fileInputs: [...document.querySelectorAll('input[type=file]')].map(i=>({id:i.id,vis:i.offsetParent!==null}))
-})
-EOF
-```
-
-The description textarea is `issue-<N>-body` (name `pull_request[body]`); its file input is the
-same id with an `fc-` prefix: `fc-issue-<N>-body`.
-
-## Step 5 — Save the current body, then upload
-
-```bash
-# 1. save current body verbatim (rebuild from this, don't diff the live textarea later)
-agent-browser eval --stdin <<'EOF' > /tmp/pr-body.json
-JSON.stringify(document.getElementById('issue-<N>-body').value)
-EOF
-python3 -c "import json;open('/tmp/pr-body.md','w').write(json.load(open('/tmp/pr-body.json')))"
-
-# 2. upload ALL images in one call
-agent-browser upload "#fc-issue-<N>-body" 1-foo.png 2-bar.png
-
-# 3. wait until the markdown resolves — poll the textarea value for user-attachments/assets/
-```
-
-Each upload inserts `![](https://github.com/user-attachments/assets/<uuid>)` at the cursor
-(usually the top), not at any placeholder — expected, fixed next.
-
-## Step 6 — Assemble the final body
-
-Extract the uploaded URLs in upload order:
-
-```bash
-agent-browser eval --stdin <<'EOF'
-JSON.stringify(document.getElementById('issue-<N>-body').value.match(/https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/g))
-EOF
-```
-
-Build the final body **in a script** (Python — the body is long and full of backticks/quotes):
-take the saved `/tmp/pr-body.md` and either
-
-- replace each `**[Attach: N-name.png here]**` placeholder the caller pre-placed with
-  `![<caption>](<Nth URL>)`, or
-- if there are no placeholders, append a new trailing section:
+- The PR description is the **first comment, by the PR author**. Its `button "Show options"` sits
+  right after `heading "<author> commented …"` and before the first body heading in the snapshot.
+  Do **not** pick a bot comment's "Show options" (Vercel/Danger), and do **not** use
+  `button "Edit title"`.
+- `agent-browser click @e<N>` on that button → then `click` the `menuitem "Edit comment"`.
+- Enumerate inputs (ids are per-issue — never hardcode the number):
+  ```bash
+  agent-browser eval --stdin <<'EOF'
+  JSON.stringify({
+    textareas:[...document.querySelectorAll('textarea')].map(t=>({id:t.id,name:t.name})),
+    fileInputs:[...document.querySelectorAll('input[type=file]')].map(i=>i.id)
+  })
+  EOF
   ```
-  \n\n---\n\n## Screenshots\n\n### <caption>\n\n![<factual alt>](<URL>)\n
-  ```
+  Description textarea: `issue-<N>-body` (name `pull_request[body]`). Its file input:
+  `fc-issue-<N>-body` (same id, `fc-` prefix).
 
-## Step 7 — Write the body back (native setter, NOT `fill`)
-
-`fill <ref> --stdin` is not a real flag — it types the literal string `--stdin` into the field.
-GitHub's editor is a controlled React input, so a plain `.value =` reverts. Use the native setter
-+ a dispatched `input` event:
+## Step 5 — Upload the images (this is all the browser is for)
 
 ```bash
-python3 -c "import json;print(json.dumps(open('/tmp/pr-body-final.md').read()))" > /tmp/final.json
-cat > /tmp/set.js <<JSEOF
-(function(){
-  var ta=document.getElementById("issue-<N>-body");
-  var setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,"value").set;
-  setter.call(ta, $(cat /tmp/final.json));
-  ta.dispatchEvent(new Event("input",{bubbles:true}));
-  return JSON.stringify({len:ta.value.length,
-    leftoverPlaceholder: ta.value.includes("[Attach"),
-    stdinArtifact: ta.value.includes("--stdin"),
-    imgCount:(ta.value.match(/user-attachments\/assets\//g)||[]).length});
-})();
-JSEOF
-cat /tmp/set.js | agent-browser eval --stdin
+agent-browser upload "#fc-issue-<N>-body" 1-foo.png 2-bar.png     # all in one call
 ```
 
-Verify: `leftoverPlaceholder:false`, `stdinArtifact:false`, `imgCount` == number of files uploaded.
-Re-read `ta.value` once more to confirm it stuck (don't trust the a11y snapshot — it **truncates**
-long textarea text and will look like your section is missing when it isn't).
+Each upload fires an immediate POST and inserts `![](https://github.com/user-attachments/assets/<uuid>)`
+into the textarea. **The asset is minted on GitHub's CDN the moment it uploads — it persists even if
+you never save the comment.** That is why Step 7 can cancel the editor and still use the URLs.
 
-## Step 8 — Save
-
-The button label is **"Update comment"** (editing an existing description), not "Save". It's usually
-below the fold:
-
+Poll for the URLs, extracting **only the asset URLs** (ASCII, no newlines — safe to read back):
 ```bash
-agent-browser eval --stdin <<'EOF'
-(function(){var b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Update comment');b.scrollIntoView({block:'center'});return b.getBoundingClientRect().y})()
+for i in $(seq 1 30); do
+  URLS=$(agent-browser eval --stdin <<'EOF'
+(document.getElementById('issue-<N>-body').value.match(/https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/g)||[]).join('\n')
 EOF
-agent-browser snapshot -i -c        # get the fresh @ref for "Update comment"
-agent-browser click @e<N>           # click by REF — `find role button click --name` reported success without submitting this session
+)
+  n=$(printf '%s\n' "$URLS" | grep -c .)
+  [ "$n" -ge <IMAGE_COUNT> ] && break
+  sleep 1
+done
+printf '%s\n' "$URLS"    # one asset URL per line, in upload order
 ```
+`agent-browser eval` wraps its output in one JSON layer, so `URLS` here is a quoted string with
+`\n` escapes — pipe it through `python3 -c 'import json,sys;print(json.loads(sys.stdin.read()))'`
+if you need it literal, or just `grep -o` the asset-URL regex again. Either way: only ever pull the
+**URLs** out of the browser, never the whole body.
 
-## Step 9 — Verify it rendered
+## Step 6 — Assemble the new body from `/tmp/psp-body-original.md` (in Python)
+
+Use an **HTML `<img>` tag with an explicit `width`**, not `![alt](url)` markdown — bare markdown
+renders a phone screenshot (e.g. 1170×2532) at full column width, which is enormous and pushes the
+rest of the description off-screen. `<img width=N>` still links to the full-size image on click.
+
+Get each image's real pixel size with `sips` (always on macOS) and pick a display width by
+orientation:
 
 ```bash
-agent-browser eval --stdin <<'EOF'
-JSON.stringify([...document.querySelectorAll('.markdown-body img')].map(i=>({src:i.currentSrc,alt:i.alt,w:i.naturalWidth,h:i.naturalHeight,ok:i.complete&&i.naturalWidth>0})))
-EOF
-agent-browser screenshot /tmp/pr-rendered.png
+for f in /tmp/psp-*.png; do
+  read -r W H < <(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixelWidth/{w=$2}/pixelHeight/{h=$2}END{print w, h}')
+  echo "$f $W $H"
+done > /tmp/psp-dims.txt
 ```
 
-GitHub rewrites `user-attachments/assets/<uuid>` → `https://private-user-images.githubusercontent.com/…?jwt=…`
-on render — that's expected. Pass condition: an `<img>` in `.markdown-body` with `ok:true`
-(nonzero `naturalWidth`, `complete`). Read `/tmp/pr-rendered.png` and actually look at it.
+```bash
+python3 - <<'PY'
+import json
+orig = open("/tmp/psp-body-original.md").read().rstrip("\n")
+urls = [u for u in open("/tmp/psp-urls.txt").read().split() if u.startswith("https://")]
+caps = json.load(open("/tmp/psp-captions.json"))            # ["factual alt 1", ...] in upload order
+dims = {}
+for line in open("/tmp/psp-dims.txt"):
+    p = line.split()
+    if len(p) == 3: dims[p[0]] = (int(p[1]), int(p[2]))
+files = sorted(dims)                                        # same numbered order as upload
 
-## Step 10 — Clean up and report
+def display_width(w, h):
+    if h > w:            # portrait — phone screenshot
+        return 300
+    return min(w, 760)   # landscape / desktop — cap column width, never upscale
 
-- If Step 2 option 4 (quit Chrome) was used: `agent-browser close --all` then `open -a "Google Chrome"`.
-- `agent-browser close --all` otherwise.
-- Give the user the PR URL as a plain link. **Do not auto-open it.** State plainly that the images
-  are embedded and rendering, not just linked.
+section = "\n\n---\n\n## Screenshots\n"
+for f, u, c in zip(files, urls, caps):
+    w, h = dims[f]
+    section += f'\n### {c}\n\n<img src="{u}" alt="{c}" width="{display_width(w, h)}">\n'
+# If the caller pre-placed "**[Attach: N-name.png here]**" markers, replace those with the same
+# <img ...> lines instead of appending a new section.
+open("/tmp/psp-body-new.md", "w").write(orig + section)
+print(open("/tmp/psp-body-new.md").read()[-700:])
+PY
+```
+
+Sanity-check the file: first char is not `"`, `grep -c '\\n'` is 0 (no literal backslash-n),
+`## ` heading count matches expectation, every asset URL appears inside a `<img ... width=...>` tag.
+
+## Step 7 — Cancel the browser editor, then save via `gh`
+
+```bash
+agent-browser snapshot -i -c            # fresh ref for the Cancel button
+agent-browser click @e<cancel-ref>      # discard the browser edit — nothing typed back through it
+gh pr edit <N> --repo <owner>/<repo> --body-file /tmp/psp-body-new.md
+```
+
+`gh pr edit --body-file` is the only writer. No native-setter, no `fill --stdin`, no React-input
+tricks — that whole class of bug is gone because the browser never writes the body.
+
+## Step 8 — Verify
+
+```bash
+gh pr view <N> --repo <owner>/<repo> --json body -q .body | python3 -c "
+import sys; b=sys.stdin.read()
+assert not b.lstrip().startswith('\"'), 'body got JSON-wrapped'
+assert b.count(chr(92)+'n')==0, 'literal backslash-n in body'
+print('h2 headings:', b.count(chr(10)+'## '))
+print('asset URLs:', b.count('user-attachments/assets/'))
+"
+agent-browser open "<PR_URL>"          # reload the rendered page
+agent-browser eval --stdin <<'EOF'
+JSON.stringify([...document.querySelectorAll('.markdown-body img')].map(i=>({alt:i.alt,ok:i.complete&&i.naturalWidth>0})))
+EOF
+agent-browser screenshot /tmp/psp-rendered.png
+```
+GitHub rewrites `user-attachments/assets/<uuid>` → `private-user-images.githubusercontent.com/…?jwt=…`
+on render — expected. Pass = every `.markdown-body img` has `ok:true`. `Read` `/tmp/psp-rendered.png`
+and actually look.
+
+## Step 9 — Clean up and report
+
+- Quit-Chrome path was used → `agent-browser close --all` then `open -a "Google Chrome"`.
+- Otherwise → `agent-browser close --all`.
+- Give the user the PR URL as a plain link. **Do not auto-open it.** State that the images are
+  embedded and rendering, not just linked.
 
 ## Notes
 
-- A real Chrome profile / `--auto-connect` session is a live authenticated session as that person.
-  Navigate it only to the PR being edited; don't touch anything else.
-- Only edit the description. Never post a separate comment, never change the title, never push.
-- If no authenticated session is available and the user won't set one up: fall back to a manual
-  hand-off — `SendUserFile` the screenshots, give the user the PR edit URL and the exact
-  `![alt](path)` markdown block, and stop. Don't fabricate an upload.
+- A real Chrome profile / dedicated-profile session is a live authenticated session as that person.
+  Navigate it only to the PR being edited.
+- Only ever edit the description. Never post a comment, change the title, or push.
+- No authenticated session and the user won't set one up → `SendUserFile` the screenshots, give the
+  user the PR edit URL and the exact `![alt](path)` block, stop. Don't fabricate an upload.
+- Leaving `--remote-debugging-port` open on a working (non-default) profile exposes full control of
+  that browser to any local process — enable only for a run, drop it after. The dedicated-profile
+  path doesn't use the port at all.
