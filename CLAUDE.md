@@ -33,6 +33,15 @@ If you think you need to change any locked components, mention it, but DONT chan
 
 Never check the simulator screen (screenshot, describe, or otherwise look at what's on screen) unless the user explicitly asks you to. This applies even when verifying a UI change — do not proactively launch a `run` or `screenshot-screen` skill/check to "confirm" something looks right; ask the user or wait for them to request it.
 
+## Test accounts for two-user flows
+
+Whenever you need to test anything that happens between two users — sending a gift, friend / follow requests, notifications on the receiving side, shared wishlists, etc. — two dev accounts already exist. Their credentials live in `packages/convex/.env.local`:
+
+- `DEV_ACC_1_EMAIL` / `DEV_ACC_1_PASS`
+- `DEV_ACC_2_EMAIL` / `DEV_ACC_2_PASS`
+
+Sign in with them through the dev-only "Continue with email" button on the auth sheet (visible in `__DEV__` builds only). Don't paste these values into chat, commits, PRs, or any file outside `.env.local`.
+
 ## Auto-approving Write outside the project root (e.g. /private/tmp)
 
 `Write(path)` rules in `permissions.allow` and `defaultMode: "acceptEdits"` only apply to files **within the project root**. Writing to `/private/tmp` or any path outside the repo will always prompt unless you do two things in `settings.local.json`:
