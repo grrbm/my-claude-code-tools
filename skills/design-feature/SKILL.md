@@ -2,8 +2,9 @@
 name: design-feature
 description: >-
   Figure out the design changes and net-new screens a feature needs, then build a
-  publicly-shareable review page that pairs real screenshots of the current screens with HTML
-  mockups of the new/changed ones, optionally plus an editable Claude Design canvas. Use this
+  publicly-shareable review page — real screenshots for every screen that already exists
+  (changes screenshotted from a throwaway spike), HTML mockups only for genuinely new screens —
+  optionally plus an editable Claude Design canvas. Use this
   whenever the user points at a feature — a GitHub PR, a Linear
   ticket, or a plain-English description — and asks you to "figure out the design changes or
   additions", "design this feature", "what needs to change in the UI for X", "mock up the
@@ -18,10 +19,12 @@ description: >-
 # Design a feature
 
 The goal is a **visual proposal a human can react to and forward**: a publicly-shareable review
-page that puts the app's current screens (real screenshots) next to proposed new-or-changed
-screens (HTML mockups). The written brief — what changes, what's new, what can be reused — goes
-in the **conversation, never on the page**. Optionally also an editable Claude Design canvas for
-hands-on iteration. Implementation happens later, in code, against the approved screens.
+page that puts the app's current screens next to the proposed ones. A screen that already
+exists — current, or a change to it — is a **real screenshot** (the change screenshotted from a
+throwaway implementation spike); only a genuinely **new** screen is an HTML mockup. The written
+brief — what changes, what's new, what can be reused — goes in the **conversation, never on the
+page**. Optionally also an editable Claude Design canvas for hands-on iteration. Implementation
+happens later, in code, against the approved screens.
 
 **The review page carries only screens and concise titles.** No AI-written thesis, captions,
 explanations, rationale, or footnotes — ever. A short factual title per screen plus a
@@ -82,7 +85,8 @@ input — using the screen list from step 2:
   "Continue with email" button, act from one account, switch, screenshot the receiving side.
   Dismiss any OS overlay (rating prompt, permission dialog) before the shot. Save PNGs to
   `.claude/skills/design-feature/design-feature-workspace/<feature-slug>/screens/` with names
-  that map to the brief (`current-gift-claimed.png`, `current-order-history.png`).
+  that map to the brief (`current-gift-claimed.png`, `current-order-history.png`). Keep this
+  simulator session alive — step 5 reuses it to screenshot the CHANGE screens.
 - **Declined, or the simulator can't be reached**: you cannot finish the CURRENT panels. Say so
   plainly. Either wait for the user to hand you screenshots, or ship an interim page with those
   panels stamped "reconstructed from code — not verified on device" and tell the user they are
@@ -146,17 +150,51 @@ Build it:
   per flow, in the order the user moves through them. For an all-new flow, two proposed screens
   side by side, both tagged `NEW`. Each cell = the concise title line + the screen. Nothing
   else between cells.
-- **CURRENT cells → real screenshots.** Embed each step-3 PNG as a base64 `data:` URI inline in
+
+Render each cell by its kind — from step 4's brief, a screen is CURRENT, a CHANGE to an existing
+screen, or a NEW screen:
+
+- **CURRENT cell → real screenshot** (step 3). Embed each PNG as a base64 `data:` URI inline in
   the HTML (keeps the page free of the `assets` capability, so it stays publicly shareable).
   Downscale first — `sips --resampleWidth 640 in.png --out out.png` — so the whole file stays
   well under the 16 MB artifact limit. Frame each in a phone-proportioned box the same width as
-  the mockup cells.
-- **NEW/CHANGED cells → HTML mockups.** Each artboard is standalone HTML with its own `<style>`
-  and colliding class names (`.phone`, `.title`, `.btn`…), so isolate each in its own
-  `<iframe>` via `srcdoc` (`iframe.srcdoc = '<!doctype html>…<style>'+css+'</style>'+body`).
-  The boards are 430px wide — wrap each in a fixed-size box scaled with
-  `transform: scale(var(--s)); transform-origin: top left`, `--s` ≈ `0.72` desktop, single
-  column on narrow screens. Reuse step 6's canvas markup if there is one.
+  the other cells.
+- **CHANGE cell → the real screen with only the delta.** The screen already exists, so a
+  from-scratch HTML redraw is never acceptable — it drifts from the real thing in a dozen small
+  ways and buries the one change that matters. Two ways to do it right, best first:
+  1. **Implement the change on the mockup branch, run it, screenshot it** (same simulator
+     session as step 3). This is the highest fidelity — it *is* the app plus the delta — and it
+     shows states a screenshot of today can't (a new filter active, a new row type). It doubles
+     as an implementation spike.
+     - **Always cut a dedicated branch** off the working branch's `HEAD`, named
+       `mockup/<feature-slug>`, and **commit** the spike edits there so the screenshots stay
+       reproducible. Commit subject `spike(design): <feature> mockup changes for review
+       screenshots`, body noting it is a throwaway visual spike, not for merge. Never PR or
+       merge it. Never add assistant attribution (CI gate). On this repo the husky pre-commit
+       hook needs `node` on PATH, which this machine lacks — commit the spike with
+       `--no-verify`.
+     - Keep the edits **client-only**: never touch the shared Convex schema or write junk data
+       to the shared dev backend — inject any sample data (a synthetic notification row, a
+       stubbed filter result) on the client, and mark it with a `// design spike` comment.
+     - The spike needs Metro hot-reload: `cd apps/mobile && bun run start`. On this repo Metro
+       needs Watchman or it crashes on the first file change with
+       `TypeError ... 'changes.addedFiles'` — if `watchman` isn't installed, `brew install
+       watchman`, `watchman watch-project <repo>`, then start Metro. Relaunch the dev build
+       (`xcrun simctl launch <udid> mobile.shopit.store.dev`) so it attaches.
+     - After screenshotting every CHANGE screen, `git checkout` back to the working branch. The
+       `mockup/<feature-slug>` branch stays for re-takes (step 7).
+  2. **Overlay the delta on the CURRENT screenshot.** Only when the diff is too big for a quick
+     spike. Position the new elements with percent coords over the screenshot `<img>`, take
+     colours from the design tokens the screenshot already uses, ring the added element and pin
+     a small `NEW` on it, and redraw only the region that actually reflows. An overlay lies if
+     the addition pushes existing content around — if it does, fall back to option 1.
+- **NEW cell → HTML mockup.** No counterpart in the app, so fidelity is to the design system,
+  not to a screenshot. Each artboard is standalone HTML with its own `<style>` and colliding
+  class names (`.phone`, `.title`, `.btn`…), so isolate each in its own `<iframe>` via `srcdoc`
+  (`iframe.srcdoc = '<!doctype html>…<style>'+css+'</style>'+body`). The boards are 430px wide —
+  wrap each in a fixed-size box scaled with `transform: scale(var(--s)); transform-origin: top
+  left`, `--s` ≈ `0.72` desktop, single column on narrow screens. Reuse step 6's canvas markup
+  if there is one.
 - **Design system** for the mockups and the page frame: palette and type from
   `.claude/ai/design-system.md` (button `#D34006`, brand `#FF591F`, ground `#FAF9F7`); design
   light and dark.
@@ -184,9 +222,11 @@ canvas, if there is one). Structural rethinks (a screen splits in two, the flow 
 update the brief first, then re-seed the affected artboards so brief, review page, and canvas
 stay in sync.
 
-**When the app itself changes**, re-capture the affected CURRENT screenshots (step 3) and swap
-them into the page — the screenshots are the source of truth for current state, and stale ones
-defeat the point. The NEW/CHANGED HTML stays as-is unless the proposal moved.
+**When the app itself changes**, re-capture the affected CURRENT screenshots (step 3), then
+`git checkout mockup/<feature-slug>`, rebase or re-apply the spike if it drifted, reload the
+app, and re-screenshot every CHANGE screen (step 5) — screenshots are the source of truth for
+current *and* changed state, and stale ones defeat the point. NEW-screen HTML stays as-is
+unless the proposal moved.
 
 Stop when the user says the direction is right. Implementation happens later, in code, against
 the approved screens — that's `linear-implement-task`, not this skill.
