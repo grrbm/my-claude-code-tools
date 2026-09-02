@@ -1,1 +1,5 @@
 .env
+# Per-run skill scratch & outputs — never part of a skill itself
+skills/*-workspace/
+skills/*/*-workspace/
+screenshots-output/
