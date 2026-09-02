@@ -256,7 +256,11 @@
       "Bash(bash -c \"grep -qF 'pid,ppid= -p \\\\$\\\\$' && echo '{\\\\\"hookSpecificOutput\\\\\":{\\\\\"hookEventName\\\\\":\\\\\"PermissionRequest\\\\\",\\\\\"decision\\\\\":{\\\\\"behavior\\\\\":\\\\\"allow\\\\\"}}}' || echo '{}'\")",
       "Bash(jobs)",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(xargs -I{} sh -c 'grep -c \"<AppBottomSheetModal\" \"{}\" | xargs -I count echo \"count {}\"')"
+      "Bash(xargs -I{} sh -c 'grep -c \"<AppBottomSheetModal\" \"{}\" | xargs -I count echo \"count {}\"')",
+      "Bash(npx --yes skills find \"ios app design mockup\")",
+      "Bash(bunx skills *)",
+      "WebFetch(domain:skills.sh)",
+      "Artifact"
     ],
     "deny": [
       "Bash(rm -rf *)",
@@ -267,12 +271,12 @@
       "Bash(git branch -D*)"
     ],
     "defaultMode": "bypassPermissions",
-    "_bypassPermissionsPriorMode": "acceptEdits",
     "additionalDirectories": [
       "/private/tmp",
       "/tmp",
       "/Users/guilhermereis/Desktop/clones/shopit-monorepo/.claude"
-    ]
+    ],
+    "_bypassPermissionsPriorMode": "acceptEdits"
   },
   "hooks": {
     "PermissionRequest": [
