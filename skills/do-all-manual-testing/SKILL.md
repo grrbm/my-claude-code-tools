@@ -1,12 +1,12 @@
 ---
 name: do-all-manual-testing
-description: Given one or more GitHub PR URLs, actually performs the on-device manual testing described in each PR's own "How to manually test this" section — drives the iOS Simulator through every step, takes evidence screenshots, catches and fixes any real bugs found along the way, then gets those screenshots formatted into the PR description. Use whenever the user gives one or more PR URLs and asks to "do the manual testing", "test this on the simulator and screenshot it", "run through the manual test steps and get screenshots into the PR", "do all the manual testing for these PRs", or otherwise wants the how-to-test steps actually carried out on device rather than just described. Multiple PRs are processed strictly one at a time, never in parallel — driving two PRs' worth of simulator/backend state at once is a real collision risk, not just a style preference.
+description: Given one or more GitHub PR URLs, actually performs the on-device manual testing described in each PR's own "How to manually test this" section — drives the iOS Simulator through every step, takes evidence screenshots, catches and fixes any real bugs found along the way, then uploads those screenshots into the PR description itself — labeled, laid out, and rendering inline — with no manual drag-and-drop hand-off. Use whenever the user gives one or more PR URLs and asks to "do the manual testing", "test this on the simulator and screenshot it", "run through the manual test steps and get screenshots into the PR", "do all the manual testing for these PRs", or otherwise wants the how-to-test steps actually carried out on device rather than just described. Multiple PRs are processed strictly one at a time, never in parallel — driving two PRs' worth of simulator/backend state at once is a real collision risk, not just a style preference.
 argument-hint: <pr-url-1> [<pr-url-2> ...]
 ---
 
 Actually perform the manual testing described in each PR below, one PR fully to completion before starting the next: $ARGUMENTS
 
-This skill is a composition, not a rewrite, of two existing skills' techniques — it invokes `ios-simulator` for the mechanics of driving the simulator, and `format-pr-screenshots` for the final labeling/table/apply step, rather than duplicating either skill's instructions here. That keeps this pipeline in sync automatically if either of those skills changes, the same reason `do-everything` composes `linear-implement-task`/`create-pr`/`self-review-pr` instead of copying their steps.
+This skill is a composition, not a rewrite, of two existing skills' techniques — it invokes `ios-simulator` for the mechanics of driving the simulator, and `post-screenshots-to-pr` for the mechanics of minting GitHub asset URLs from the screenshots and embedding them in the PR body, rather than duplicating either skill's instructions here. That keeps this pipeline in sync automatically if either of those skills changes, the same reason `do-everything` composes `linear-implement-task`/`create-pr`/`self-review-pr` instead of copying their steps.
 
 ## Step 0 — Parse the PR list
 
@@ -59,33 +59,33 @@ This is the rule this skill exists to enforce, not an aside: if a scenario throw
 
 Keep a short running note of what broke and how it was fixed — the end-of-batch report (see Rules below) needs it. A PR's own manual-test steps are a genuine test of the code, not just a script to screenshot through; treat a failure there the way you'd treat a failing test, not as an obstacle to route around.
 
-### Step 6 — Hand the folder to the user
+### Step 6 — Post the screenshots into the PR description yourself
 
-```bash
-open <the PR's screenshot folder>
-```
+Do not hand the folder to the user to drag-and-drop. Upload the screenshots and write the labeled section yourself, using `post-screenshots-to-pr`'s mechanics. Read that skill's SKILL.md for the exact `agent-browser` gotchas (dedicated Chrome profile, per-issue input ids, upload-mints-the-URL-even-if-you-discard-the-editor, `gh` is the only writer). The shape for this skill's use:
 
-Then tell the user something like: "Screenshots for PR #<number> are ready in <folder> — please upload them to the PR description, then let me know when you're done."
+1. **Canonical body via `gh`** — `unset GITHUB_TOKEN && gh pr view <number> -R <owner>/<repo> --json body -q .body > <tmp>/body-original.md`. This is the source Step 6.6 rebuilds from; never read the body back out of the browser textarea.
+2. **Label each screenshot** — `Read` each PNG and write a short factual label (2–5 words: what is on screen — "Thank <sender> CTA", "Thanked state, dark mode", "Sender inbox: one folded row"). You took these shots minutes ago and know exactly what each proves — no need to re-download or re-derive.
+3. **Authenticated browser session** — `agent-browser close --all`, then drive everything from one shell with the dedicated profile: `agent-browser --profile ~/.agent-browser-profiles/github open "<PR_URL>"`. Confirm `meta[name=user-login]` is the user's login, not `null`. If that profile isn't logged in (or doesn't exist), that's the fallback case below — don't try other Chrome profiles blind.
+4. **Upload** — open the description's editor (its kebab `summary.timeline-comment-action` → the `Edit` dropdown item), enumerate inputs to get the per-issue `fc-issue-<N>-body` file input id, then `agent-browser upload "#fc-issue-<N>-body" <abs-path-1.png> <abs-path-2.png> …` (one file per call is the reliable form; a multi-arg call sometimes silently no-ops). Each upload inserts an `<img … alt="<filename-without-ext>" src="https://github.com/user-attachments/assets/<uuid>">` at the cursor — the asset is minted on GitHub's CDN immediately and persists even if the editor is never saved.
+5. **Collect the URLs** — read them out of the textarea value with a regex, mapping each to its file by the `alt=` filename the uploader set (more robust than upload order). Then **accept the "discard unsaved changes" dialog** (`agent-browser dialog accept`) — the browser must not save the top-stacked mess it just built; `gh` writes the real body.
+6. **Assemble the new body in Python** = `body-original.md` verbatim + a new `## Manual testing (<platform>)` section appended after the last existing section:
+   - a 2–4 sentence factual intro: which backend/deployment the app was pointed at, which accounts, and what was *not* re-run (e.g. reused a pre-existing claimed gift instead of re-running send+claim);
+   - the screenshots as a markdown table — labels as column headers, `<img src="<url>" width="180" alt="<label>">` in the row below, **≤4 columns per table**, split into multiple table blocks if there are more than ~5 so no block needs horizontal scrolling;
+   - a short **Verified** bullet list (what the run actually confirmed) and, if applicable, a **Not verified on simulator** list (e.g. push delivery — APNs doesn't reach the simulator) and any bug found + fixed.
+   Sanity-check the assembled file: first char isn't `"`, zero literal `\n`, `user-attachments/assets/` count == screenshot count, first line still the PR's original first heading.
+7. **Write and verify** — `unset GITHUB_TOKEN && gh pr edit <number> -R <owner>/<repo> --body-file <tmp>/body-new.md`, then `agent-browser open "<PR_URL>"` and confirm every `.markdown-body img` from your section has `complete && naturalWidth > 0`. `agent-browser close --all` when done.
 
-### Step 7 — Wait for explicit confirmation
+Do this without asking for confirmation — it only ever *appends* a `## Manual testing` section and leaves every other part of the body byte-for-byte unchanged, and the user asked for the testing to be carried out end to end. Do not post a comment, change the title, touch other sections, or push.
 
-Do not proceed to Step 8 on your own judgment about elapsed time or silence. Wait for the user to actually say they've uploaded the images.
-
-### Step 8 — Verify the upload actually landed
-
-Once the user confirms, re-fetch the PR body and check that the media section now genuinely contains new image links (`user-attachments/assets/` URLs or `<img>`/markdown-image tags that weren't there in Step 1's copy of the body) — don't take the user's word alone as proof, the same way `format-pr-screenshots` never trusts an unlabeled wall of images without looking. If nothing new is there, say so and wait for the user again rather than proceeding to format an unchanged section.
-
-### Step 9 — Format the screenshots
-
-Invoke the `format-pr-screenshots` skill, passing this PR's URL as its argument. Let it run its own full process — reading the body, viewing each image to write accurate labels, laying out the table, reassembling the full body untouched outside that section, and previewing + confirming with the user before it applies anything. Don't duplicate or second-guess that skill's steps here; it already owns this problem end to end, including its own apply-confirmation gate.
+**Fallback (no authenticated browser profile, or the user declines to set one up):** `open` the screenshot folder, `SendUserFile` the images, and give the user the PR edit URL plus the exact `## Manual testing` block (table + `<img>` tags with local paths for them to swap) — then stop. Don't fabricate an upload path.
 
 ## Moving to the next PR
 
-Do not begin Step 3 (or any simulator interaction) for PR N+1 until PR N has cleared Step 9. This mirrors why `do-everything` waits out a ticket's whole self-review chain before starting the next one: the simulator, the checked-out branch, and whatever backend deployment is live are all shared, mutable state. A bug fix mid-way through PR N's testing might touch files or a deployment PR N+1 also depends on — running them concurrently risks one PR's fix or checkout silently clobbering the other's in-progress test.
+Do not begin Step 3 (or any simulator interaction) for PR N+1 until PR N has cleared Step 6. This mirrors why `do-everything` waits out a ticket's whole self-review chain before starting the next one: the simulator, the checked-out branch, and whatever backend deployment is live are all shared, mutable state. A bug fix mid-way through PR N's testing might touch files or a deployment PR N+1 also depends on — running them concurrently risks one PR's fix or checkout silently clobbering the other's in-progress test.
 
 ## Rules
 
-- Do not ask for confirmation before starting a PR, between its steps, or before opening its folder — the point of this skill is to actually run the testing, not describe it. The two points that *do* require explicit confirmation are structural, not optional: waiting for the user's upload (Step 7) and `format-pr-screenshots`' own apply gate (Step 9) — both mutate or depend on state only the user can complete.
+- Do not ask for confirmation before starting a PR, between its steps, before driving the simulator, or before posting the screenshots into the PR (Step 6) — the point of this skill is to actually run the testing and land the evidence, not describe it or hand it back. Step 6 only ever appends a `## Manual testing` section and never touches the rest of the body, so it needs no gate; the one place that genuinely stops is Step 6's fallback, when there's no authenticated browser session to mint the upload.
 - Never skip Step 5's bug-fix-first rule to keep a batch moving faster. A screenshot of broken behavior isn't a faster path through this pipeline, it's a wrong one.
 - If a PR fails outright — can't be fetched, has no testable manual-test section, or the simulator/backend setup can't be made to reflect the PR's branch — report exactly what failed and why for that PR, then continue to the next PR rather than aborting the whole batch.
 - At the end, report one line per PR: whether it completed cleanly (with the final PR URL), what bugs — if any — were found and fixed along the way, or exactly what failed and at which step.
