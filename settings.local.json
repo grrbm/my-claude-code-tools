@@ -260,7 +260,8 @@
       "Bash(npx --yes skills find \"ios app design mockup\")",
       "Bash(bunx skills *)",
       "WebFetch(domain:skills.sh)",
-      "Artifact"
+      "Artifact",
+      "Skill(hotfix-pr)"
     ],
     "deny": [
       "Bash(rm -rf *)",

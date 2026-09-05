@@ -135,7 +135,8 @@ constraints:
 > screen (`A1 · app/gift/[giftId].tsx`, `Order History`, `gift_thanked notification`) plus a
 > `CURRENT` / `NEW` tag. No thesis, no legend sentences, no captions describing the change, no
 > footnotes, no rationale — nothing an AI wrote *about* the design. If it's a sentence, it
-> belongs in the conversation, not on the page.
+> belongs in the conversation, not on the page. The one exception is the user's own commentary
+> section, added on request after publish (see the end of this step) — their words, not yours.
 >
 > **2. Publicly shareable.** Publish with **no `capabilities`** — no `assets`, no file
 > downloads, no `<a download>` links. An artifact that offers downloads can't be shared
@@ -191,17 +192,50 @@ screen, or a NEW screen:
 - **NEW cell → HTML mockup.** No counterpart in the app, so fidelity is to the design system,
   not to a screenshot. Each artboard is standalone HTML with its own `<style>` and colliding
   class names (`.phone`, `.title`, `.btn`…), so isolate each in its own `<iframe>` via `srcdoc`
-  (`iframe.srcdoc = '<!doctype html>…<style>'+css+'</style>'+body`). The boards are 430px wide —
-  wrap each in a fixed-size box scaled with `transform: scale(var(--s)); transform-origin: top
-  left`, `--s` ≈ `0.72` desktop, single column on narrow screens. Reuse step 6's canvas markup
-  if there is one.
+  (`iframe.srcdoc = '<!doctype html>…<style>'+css+'</style>'+body`). The boards are 430px wide.
+  Wrap each in a box with `aspect-ratio: 430 / 950; overflow: hidden`, and scale the iframe to
+  the box: on load **and on `resize`/`orientationchange`**, set
+  `iframe.style.transform = 'scale(' + (box.clientWidth / 430) + ')'` (`transform-origin: top
+  left`; keep a static `transform: scale(0.72)` in CSS as the first-paint fallback). Never put a
+  length inside `scale()` or `calc(430px * …)` — a viewport-derived `--s` is a length and
+  silently voids both. Reuse step 6's canvas markup if there is one.
 - **Design system** for the mockups and the page frame: palette and type from
   `.claude/ai/design-system.md` (button `#D34006`, brand `#FF591F`, ground `#FAF9F7`); design
   light and dark.
+- **Responsive — always.** The page is forwarded and opened on phones. Build it mobile-safe from
+  the start, don't bolt it on:
+  - Grid tracks are `minmax(0, 1fr)`, never bare `1fr`; every flex/grid child that holds a
+    screen (`figure`, the `.shot` screenshot box, the mockup box) gets `min-width: 0`. Bare
+    `1fr` + default `min-width: auto` lets a wide screenshot blow the column past the viewport.
+  - A `@media` breakpoint (~640px) drops to one column, makes the screenshot/mockup boxes
+    `width: 100%`, tightens page padding, bumps the mono captions up a point and lets them wrap,
+    and removes any `max-width` cap on the commentary card.
+  - `body { overflow-x: hidden }` as a backstop; `img { max-width: 100% }` on every screenshot.
+  - Before handing over the link, check the page once at a real narrow width (~390–430px), not
+    just desktop.
 
 Publish with the Artifact tool (no `capabilities`). Post the step-4 brief in the **conversation**
 next to the link, and tell the user how to open sharing: **artifact → share menu → Share
 publicly → copy link.**
+
+> **The public link is a frozen snapshot, not a live mirror.** Re-publishing through the tool
+> updates the private artifact only — a logged-out visitor keeps seeing whatever version was
+> public when sharing was first turned on. The tool cannot push a new version to the public
+> link; only the user can, from the share menu. So **every time you redeploy the review page
+> (here or in step 7), end your message by telling the user to re-publish the latest version as
+> the public one** (share menu → publish/update the current version) and hard-refresh. Say it
+> even if they haven't mentioned the public link — a stale share is the default failure mode.
+
+**Then always ask (via `AskUserQuestion`): do they want a personal commentary section on the
+page?** This is the one block of prose allowed on the review page — because the user writes it,
+not you.
+
+- If yes: they give you the text. Add it **verbatim** as a card at the very top of the page,
+  above the screen grid, headed `<Name>'s commentary` (e.g. `Guilherme's commentary`). Style it
+  in the page's own tokens (`--card` / `--line` / `--ink`, mono uppercase heading). Treat each
+  line break they mark as a paragraph break. Do not edit, tighten, or summarise their words.
+  Redeploy to the same URL.
+- If no: leave the page as screens-and-titles only.
 
 ## 6. Optional: an editable canvas for hands-on iteration
 
@@ -221,6 +255,9 @@ Small tweaks: edit the artboard markup and redeploy the review page to the same 
 canvas, if there is one). Structural rethinks (a screen splits in two, the flow reorders):
 update the brief first, then re-seed the affected artboards so brief, review page, and canvas
 stay in sync.
+
+Every redeploy: remind the user to re-publish the latest version as the public snapshot (see
+the callout in step 5) — the tool only moves the private artifact forward.
 
 **When the app itself changes**, re-capture the affected CURRENT screenshots (step 3), then
 `git checkout mockup/<feature-slug>`, rebase or re-apply the spike if it drifted, reload the
