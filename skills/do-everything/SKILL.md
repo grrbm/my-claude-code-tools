@@ -1,16 +1,17 @@
 ---
 name: do-everything
-description: Runs the full ticket-to-review pipeline for one or more Linear issues, fully automatically with no confirmation between steps — for each issue, in order, implements the ticket (linear-implement-task), opens the resulting branch as a draft PR (create-pr), then immediately triggers a self-review pass on that PR (self-review-pr), which in turn auto-implements its own findings. Use whenever the user gives one or more Linear issue URLs and asks to "do everything", "handle this end-to-end", "implement this and open a draft PR and review it", "take this ticket all the way", "do everything for these tickets", or otherwise wants the implement → draft PR → self-review chain run in one go instead of driving each step by hand. Multiple tickets are processed strictly one at a time, never in parallel.
-argument-hint: <linear-issue-url-1> [<linear-issue-url-2> ...]
+description: Runs the ticket-to-PR pipeline for one or more Linear issues, fully automatically with no confirmation between steps — for each issue, in order, implements the ticket (linear-implement-task) and opens the resulting branch as a draft PR (create-pr). By default it stops there. Pass the literal flag `with-self-reviews` as the first argument to also run a self-review pass on each PR (self-review-pr), which in turn auto-implements its own findings. Use whenever the user gives one or more Linear issue URLs and asks to "do everything", "handle this end-to-end", "implement this and open a draft PR", "take this ticket all the way", "do everything for these tickets", or otherwise wants the implement → draft PR chain (optionally → self-review) run in one go instead of driving each step by hand. Multiple tickets are processed strictly one at a time, never in parallel.
+argument-hint: "[with-self-reviews] <linear-issue-url-1> [<linear-issue-url-2> ...]"
 ---
 
-Run this exact three-step pipeline for each Linear issue below, one ticket fully to completion before starting the next: $ARGUMENTS
+Run this pipeline for each Linear issue below, one ticket fully to completion before starting the next: $ARGUMENTS
 
-This skill has no steps of its own — it's a fixed composition of three existing skills, invoked in sequence via the Skill tool. Composing them this way, instead of copying their internal steps here, means this pipeline automatically stays in sync if `linear-implement-task`, `create-pr`, or `self-review-pr` are ever updated.
+This skill has no steps of its own — it's a fixed composition of existing skills, invoked in sequence via the Skill tool. Composing them this way, instead of copying their internal steps here, means this pipeline automatically stays in sync if `linear-implement-task`, `create-pr`, or `self-review-pr` are ever updated.
 
-## Step 0 — Parse the ticket list
+## Step 0 — Parse the arguments
 
-Split `$ARGUMENTS` on whitespace and/or commas into individual Linear issue URLs. If only one URL is given, the pipeline below just runs once. If none are found, stop and ask the user for a Linear issue URL.
+1. **Detect the self-review flag.** If the first whitespace-separated token of `$ARGUMENTS` is exactly `with-self-reviews`, set "self-reviews: ON" for this whole run and remove that token from the argument list. Otherwise self-reviews are **OFF** (the default) — Step 3 and the entire "Moving to the next ticket" wait are skipped for every ticket. The flag is only recognised as the very first token; a bare `with-self-reviews` appearing later is not a valid Linear URL and Step 0's URL parse will surface it as an error.
+2. **Parse the ticket list.** Split what remains of `$ARGUMENTS` on whitespace and/or commas into individual Linear issue URLs. If only one URL is given, the pipeline below just runs once. If none are found, stop and ask the user for a Linear issue URL.
 
 ## For each ticket, in order, run:
 
@@ -20,13 +21,19 @@ Invoke the `linear-implement-task` skill, passing this ticket's Linear issue URL
 
 ### Step 2 — Open a draft PR
 
-Once implementation is done, invoke the `create-pr` skill. Pass it an argument that explicitly asks for a **draft** PR (e.g. `"draft PR for the branch just implemented"`) — `create-pr`'s own template does not default to draft, so this instruction is what makes it add `--draft` to the `gh pr create` call. Capture the PR URL it returns; the next step needs it.
+Once implementation is done, invoke the `create-pr` skill. Pass it an argument that explicitly asks for a **draft** PR (e.g. `"draft PR for the branch just implemented"`) — `create-pr`'s own template does not default to draft, so this instruction is what makes it add `--draft` to the `gh pr create` call. Capture the PR URL it returns.
 
-### Step 3 — Self-review the PR
+**If self-reviews are OFF (the default): the ticket is done here.** Record the PR URL and move straight to the next ticket's Step 1 — there is no separate terminal or self-review chain to wait on, and tickets are already processed one at a time in this session, so the next `linear-implement-task` cannot collide with anything.
+
+### Step 3 — Self-review the PR *(only when `with-self-reviews` was passed)*
+
+Skip this step entirely unless Step 0 turned self-reviews ON.
 
 Once the PR is open, invoke the `self-review-pr` skill, passing that PR URL as its argument. Let it run to whatever depth it decides on its own — including its own automatic chain into `implement-self-review` and any further self-review rounds it schedules. That branching logic lives entirely inside `self-review-pr`; don't duplicate or second-guess it here.
 
-## Moving to the next ticket
+## Moving to the next ticket *(only when `with-self-reviews` was passed)*
+
+This whole section applies only when self-reviews are ON. With self-reviews OFF there is no chain to wait for — see the note at the end of Step 2.
 
 `self-review-pr`'s own auto-continue chain (via `implement-self-review`) can open a **separate, fresh terminal** — with no context from this session — to keep running further self-review rounds on the current ticket's PR after this skill's Step 3 call already returns. Critically, that terminal runs `claude` against the **same shared working directory** this skill uses for every ticket (there's no per-ticket worktree isolation here). If this skill started implementing ticket 2 while that terminal is still mid-round on ticket 1, two `claude` processes would be doing git operations (checkouts, commits) in the same working directory at the same time — exactly the collision this pipeline must not risk. So: before moving on to the next ticket, wait until this ticket's entire self-review chain — however many rounds it takes, potentially across several separate terminals — has actually finished.
 
@@ -48,8 +55,8 @@ If this is the last ticket (or the only ticket given), skip this wait — there'
 
 ## Rules
 
-- Do not ask for confirmation before, between, or after any step, for any ticket — the entire point of this skill is to run the whole pipeline unattended.
-- Never process tickets in parallel, and never start ticket N+1 while ticket N's self-review chain (see above) is still running in another terminal against the shared working directory. Do not skip a step or reorder steps within a ticket, even if a shortcut looks available (e.g. don't create the PR before the implementation is actually committed).
+- Do not ask for confirmation before, between, or after any step, for any ticket — the entire point of this skill is to run the whole pipeline unattended. This includes not asking whether to run self-reviews: the `with-self-reviews` flag is the only switch, and its absence means "no".
+- Never process tickets in parallel. When self-reviews are ON, never start ticket N+1 while ticket N's self-review chain (see above) is still running in another terminal against the shared working directory. Do not skip a step or reorder steps within a ticket, even if a shortcut looks available (e.g. don't create the PR before the implementation is actually committed).
 - If a step fails outright for a ticket — `linear-implement-task` can't reach the Linear API, or `create-pr` finds nothing to commit — report exactly what failed and why for that ticket, then continue on to the next ticket rather than aborting the whole batch. Don't silently continue to that ticket's next step with nothing for it to act on.
 - If `linear-implement-task` reports an existing local branch for the same issue, follow its own guidance (mention it, don't duplicate) rather than treating that as a pipeline failure.
-- At the end, report one line per ticket: the PR URL opened (if the pipeline reached Step 2), or exactly what failed and at which step. Note for each non-final ticket whether its self-review chain finished cleanly, hit the round cap, or timed out after 2 hours.
+- At the end, report one line per ticket: the PR URL opened (if the pipeline reached Step 2), or exactly what failed and at which step. When self-reviews were ON, also note for each non-final ticket whether its self-review chain finished cleanly, hit the round cap, or timed out after 2 hours.

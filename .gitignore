@@ -3,3 +3,7 @@
 skills/*-workspace/
 skills/*/*-workspace/
 screenshots-output/
+
+# Scheduler lock file and worktree checkouts
+scheduled_tasks.lock
+worktrees/

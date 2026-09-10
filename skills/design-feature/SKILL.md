@@ -131,12 +131,20 @@ lines ("improve the layout") are a sign you haven't looked hard enough yet.
 A single static HTML artifact: a grid of screens, current next to proposed. Two hard
 constraints:
 
-> **1. Screens and titles only.** The only text on the page is a concise factual title per
-> screen (`A1 · app/gift/[giftId].tsx`, `Order History`, `gift_thanked notification`) plus a
-> `CURRENT` / `NEW` tag. No thesis, no legend sentences, no captions describing the change, no
-> footnotes, no rationale — nothing an AI wrote *about* the design. If it's a sentence, it
-> belongs in the conversation, not on the page. The one exception is the user's own commentary
-> section, added on request after publish (see the end of this step) — their words, not yours.
+> **1. Screens and titles only.** The only text on the page is a panel ID plus a concise factual
+> title per screen (`A1 · app/gift/[giftId].tsx`, `B2 · Order History`, `C2 · gift_thanked
+> notification`) plus a `CURRENT` / `NEW` tag. No thesis, no legend sentences, no captions
+> describing the change, no footnotes, no rationale — nothing an AI wrote *about* the design. If
+> it's a sentence, it belongs in the conversation, not on the page. The one exception is the
+> user's own commentary section, added on request after publish (see the end of this step) —
+> their words, not yours.
+>
+> **Every panel gets an ID — never skip this.** Letter the rows in page order (`A`, `B`, `C`, …)
+> and number the columns within a row (`1` for the left/CURRENT cell, `2` for the right/NEW
+> cell — both `2` when a row is two NEW panels side by side). Put the ID first in the caption,
+> before the title (`A1 · wishlist/[id].tsx`). IDs make panels referenceable in conversation
+> ("redo B2", "swap A1 and A2") without restating the whole title — assign them on the first
+> build, not as an afterthought once the user asks.
 >
 > **2. Publicly shareable.** Publish with **no `capabilities`** — no `assets`, no file
 > downloads, no `<a download>` links. An artifact that offers downloads can't be shared
@@ -149,8 +157,8 @@ Build it:
   write to `.claude/skills/design-feature/design-feature-workspace/<feature-slug>/share/<feature-slug>.html`.
 - **Layout**: a 2-column grid, current-state screen on the left, proposed on the right, one row
   per flow, in the order the user moves through them. For an all-new flow, two proposed screens
-  side by side, both tagged `NEW`. Each cell = the concise title line + the screen. Nothing
-  else between cells.
+  side by side, both tagged `NEW`. Each cell = the panel ID + concise title line + the screen
+  (see the ID rule above — letter per row, number per column). Nothing else between cells.
 
 Render each cell by its kind — from step 4's brief, a screen is CURRENT, a CHANGE to an existing
 screen, or a NEW screen:
