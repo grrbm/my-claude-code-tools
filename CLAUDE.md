@@ -33,6 +33,8 @@ If you think you need to change any locked components, mention it, but DONT chan
 
 Never check the simulator screen (screenshot, describe, or otherwise look at what's on screen) unless the user explicitly asks you to. This applies even when verifying a UI change — do not proactively launch a `run` or `screenshot-screen` skill/check to "confirm" something looks right; ask the user or wait for them to request it.
 
+Always target the **iPhone 16e** simulator when launching/building/opening the app — never just grab whatever simulator happens to already be booted. If iPhone 16e isn't booted, boot it first (`xcrun simctl boot <iPhone 16e UDID>`), then build/install/open against that device explicitly.
+
 ## Test accounts for two-user flows
 
 Whenever you need to test anything that happens between two users — sending a gift, friend / follow requests, notifications on the receiving side, shared wishlists, etc. — two dev accounts already exist. Their credentials live in `packages/convex/.env.local`:

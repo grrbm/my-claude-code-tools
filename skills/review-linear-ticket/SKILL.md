@@ -48,11 +48,11 @@ curl -s -X POST https://api.linear.app/graphql \
   -H "Authorization: <key>" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "{ issue(id: \"<IDENTIFIER>\") { id identifier title description priority estimate state { name } assignee { name } labels { nodes { name } } comments { nodes { body createdAt user { name } } } } }"
+    "query": "{ issue(id: \"<IDENTIFIER>\") { id identifier title description priority estimate state { name } assignee { name } labels { nodes { name } } attachments { nodes { title url subtitle } } comments { nodes { body createdAt user { name } } } } }"
   }'
 ```
 
-Read every comment — they often contain the most current requirements and scope clarifications that supersede the original description.
+Read every comment — they often contain the most current requirements and scope clarifications that supersede the original description. Scan the description, every comment body, and every `attachments` entry specifically for design references too — inline images (`uploads.linear.app` URLs), Figma/Zeplin/Sketch/Framer/Miro links, or an `attachments` node. On SHO-420 (PR #616) the ticket's design decisions were posted as a comment and missed entirely, so a design posted anywhere in the thread is exactly the kind of thing this review exists to catch before it's missed a second time — note in Step 4 whether one exists and whether the ticket's prose actually reflects it.
 
 ### Step 3 — Research the codebase
 
@@ -73,6 +73,7 @@ Be thorough. Your goal is to know what is *actually* true in the codebase, not w
 
 Evaluate the ticket against these dimensions:
 
+- **Design references** — for anything UI-facing, is there a design (mockup, Figma link, screenshot) anywhere in the description, comments, or attachments? If yes, does the ticket's written description actually match what the design shows, or does it contradict/under-specify it? If no design exists anywhere, say so explicitly — that's a gap worth flagging, not something to assume away.
 - **Acceptance criteria** — are they testable and specific? Are edge cases and failure paths covered?
 - **Scope boundary** — is the line between in-scope and out-of-scope clear? Are implicit dependencies stated?
 - **Technical accuracy** — does the ticket assume things about the codebase that aren't true?

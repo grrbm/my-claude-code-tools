@@ -35,6 +35,15 @@ Rules for a good fresh feature idea:
 
 Suggestions must be systemic — a pattern repeated across multiple features, a structural gap, or a researched should-we-or-shouldn't-we call. They must NOT be "did fix X from PR A also get applied to screen B" or any other single-PR leftover — that's a Slack message, not an architecture topic. Also do not flag things the team has already made an explicit, working call on (e.g. running multiple deliberate variants of a flow, or an accepted process like iterative self-review commits before merge) — those aren't up for debate and raising them reads as not having done the homework. If unsure whether something is settled, prefer a finding that's clearly still open.
 
+## Memory — discarded ideas
+
+This skill keeps its own memory file, local to this skill directory (not the Claude global auto-memory system): `.claude/skills/architecture-meeting-suggestions/discarded-ideas.md`. It exists so an idea the team has already discarded never gets re-proposed later, even reworded. Create it with an empty "Fresh feature ideas" / "Systemic suggestions" structure if it doesn't exist yet.
+
+- **Read it in Step 3**, before brainstorming — never propose a fresh feature idea that's the same underlying concept as one already listed, even under a different name.
+- **Write to it any time an idea is discarded** — mid-run ("skip that one, we already tried it"), while reviewing a run's output later (e.g. a comment on the draft PR, or a follow-up message naming specific ideas from a past run), or completely out of band. This isn't limited to a full skill invocation — treat "discard idea X" as an instruction to append to this file whenever it's said, regardless of what else is happening in the conversation.
+- **Entry format**: headline, a one-line description (enough to recognize the idea even if reworded), the date discarded, and the source (a PR link if there's an artifact, otherwise "conversation").
+- Systemic suggestions can be discarded the same way, filed under their own section in the same memory file — rarer in practice since they're grounded in current codebase state and tend to naturally stop applying as the code changes, but log it if the team explicitly rejects one on its merits.
+
 ## Step 1 — Verify required credentials (run in parallel)
 
 ```bash
@@ -80,7 +89,7 @@ This step is only for situational awareness (what's recently shipped, what's in 
 
 ## Step 3 — Brainstorm and verify 3 fresh feature ideas
 
-Brainstorm a handful of candidate fresh feature ideas per the "Fresh feature: what counts" rules above — draw on features you know from shopping/social/delivery/streaming apps (iFood, Amazon, Instagram, TikTok, YouTube, Depop, Pinterest, etc.) that would plausibly fit a commerce app like Shopit. Skew toward variety: don't let all 3 land in the same theme (e.g. don't propose three different comment features).
+Read `.claude/skills/architecture-meeting-suggestions/discarded-ideas.md` first (see "Memory — discarded ideas" above). Brainstorm a handful of candidate fresh feature ideas per the "Fresh feature: what counts" rules above — draw on features you know from shopping/social/delivery/streaming apps (iFood, Amazon, Instagram, TikTok, YouTube, Depop, Pinterest, etc.) that would plausibly fit a commerce app like Shopit. Skew toward variety: don't let all 3 land in the same theme (e.g. don't propose three different comment features). Drop any candidate that matches an idea already in the discarded-ideas memory, even under a different name — that's a rejected idea, not a fresh one, and keep brainstorming until you have 3 that are both confirmed-novel (below) and not previously discarded.
 
 For each candidate, spawn a quick `Explore` agent (or grep directly if the check is trivial) against the mobile app to confirm Shopit doesn't already have it or a clear equivalent. Drop any candidate that turns out to already exist, and keep brainstorming until you have 3 confirmed-novel ideas.
 

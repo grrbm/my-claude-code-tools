@@ -17,7 +17,7 @@ This skill has no steps of its own — it's a fixed composition of existing skil
 
 ### Step 1 — Implement the ticket
 
-Invoke the `linear-implement-task` skill, passing this ticket's Linear issue URL as its argument. Let it run to completion: parsing the issue, reading every comment (comments often supersede the original description), creating the branch from a freshly-pulled `main`, and implementing the feature.
+Invoke the `linear-implement-task` skill, passing this ticket's Linear issue URL as its argument. Let it run to completion: parsing the issue, reading every comment and attachment (comments often supersede the original description, and design references — mockups, Figma links, screenshots — are just as often posted as a comment as they are in the description), creating the branch from a freshly-pulled `main`, and implementing the feature to match any designs found precisely.
 
 ### Step 2 — Open a draft PR
 

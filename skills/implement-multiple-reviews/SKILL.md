@@ -74,7 +74,19 @@ For each PR URL, in the order given:
       - All review comments on the diff (`gh api repos/<owner>/<repo>/pulls/<number>/comments`)
       - All submitted reviews (`gh api repos/<owner>/<repo>/pulls/<number>/reviews`)
 
-   c. Identify pending items: only act on comments/reviews requesting changes that have NOT already been addressed in a subsequent commit or reply. Read ALL comments and reviews before touching any code. Never implement something that is already resolved.
+   b2. **Re-check the linked Linear issue for design references before implementing anything.** On SHO-420 (PR #616), the ticket's design decisions had been posted as a Linear *comment*; the review-implementation pass on that PR only read the PR's own review text and never went back to the ticket, so the design was implemented wrong a second time before anyone caught it. Don't repeat that: the PR template guarantees a `## Linear Issue` section carrying the ticket URL — extract the identifier (e.g. `SHO-420`) and fetch it fresh, even if this PR's own diff or comments seem self-explanatory:
+      ```bash
+      grep '^LINEAR_API_KEY=' /Users/guilhermereis/Desktop/clones/shopit-monorepo/.env.local | tail -1 | cut -d'=' -f2
+      curl -s -X POST https://api.linear.app/graphql \
+        -H "Authorization: <key>" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "query": "{ issue(id: \"<IDENTIFIER>\") { id identifier title description attachments { nodes { title url subtitle } } comments { nodes { body createdAt user { name } } } } }"
+        }'
+      ```
+      Scan the issue `description`, every comment `body`, and every `attachments` entry for design artifacts: inline images (markdown `![...](...)`, especially `uploads.linear.app` URLs), links to Figma/Zeplin/Sketch Cloud/Framer/InVision/Miro/Abstract/Adobe XD, or any `attachments` node. For every directly-fetchable image found, download it (`curl -s -L -o /tmp/linear-design-<n>.png "<url>"`) and `Read` it before implementing — don't treat having seen the link in text as having looked at the design. Then invoke the `screenshot-to-code` skill on the downloaded image before implementing anything from it — tell it explicitly the target is this repo's Expo/React Native app (`apps/mobile`), not web React/Tailwind, so its structural/styling breakdown (layout, components, spacing, colors) comes back in those terms; use that breakdown as an input to step (e)'s implementation, still following this app's own component conventions and locked-component rules rather than pasting its output in directly. For a design-tool link that can't be rendered this way, say so plainly and ask the user for a screenshot/export rather than silently skipping it. If the PR being reviewed is UI-facing and this turns up a design that the current implementation doesn't match, treat that as a pending item in step (c) below on the same footing as an explicit review comment — the review that requested changes may not even mention it if the reviewer also missed it.
+
+   c. Identify pending items: only act on comments/reviews requesting changes that have NOT already been addressed in a subsequent commit or reply, plus any design mismatch surfaced in (b2). Read ALL comments, reviews, and the linked ticket before touching any code. Never implement something that is already resolved.
 
    d. Check out the PR branch if not already on it: `gh pr checkout <number>`. If the branch does not exist locally, check it out automatically. This runs inside the worktree entered above — never in the shared primary working directory.
 
