@@ -1,10 +1,15 @@
 ---
 name: architecture-meeting-suggestions
-description: Generate concrete talking points for Guilherme to bring to the Monday architecture sync meeting. Use this skill whenever the user asks for meeting ideas, what to bring to architecture sync, suggestions for the Monday meeting, or what to discuss with the team this week. Explores the actual codebase (mobile app + convex backend) plus recent commits, open PRs, and Linear tickets to surface grounded, systemic observations — not invented busywork, not one-off bug fixes. Also surfaces 3 "fresh feature" ideas — completely new features borrowed from other apps that Shopit doesn't have yet.
+description: Generate concrete talking points for Guilherme to bring to the Monday architecture sync meeting. Use this skill whenever the user asks for meeting ideas, what to bring to architecture sync, suggestions for the Monday meeting, or what to discuss with the team this week. Explores the actual codebase (mobile app + convex backend) plus recent commits, open PRs, and Linear tickets to surface grounded, systemic observations — not invented busywork, not one-off bug fixes. Also surfaces 3 "fresh feature" ideas — completely new features borrowed from other apps that Shopit doesn't have yet. Pass a bare number to get only that many fresh feature ideas, with no systemic suggestions.
 allowed-tools: Bash(git *), Bash(curl *), Bash(gh *), Bash(open *), Bash(printenv *)
+argument-hint: [N — fresh-feature-ideas-only count, e.g. "8"; omit for the default: 3 fresh feature ideas + 3-5 systemic suggestions]
 ---
 
 Generate exactly 3 "fresh feature" ideas (a distinct category, see below) **first**, followed by 3-5 concrete suggestions grounded in what's actually in the codebase. The fresh feature ideas serve a different goal: inject completely new feature concepts, borrowed from other apps, that nobody on the team has proposed yet. The goal of the systemic suggestions that follow is to surface non-obvious observations the team should weigh in on — not tasks already being done, not abstract ideas, and NOT one-off bug-fix reminders (see "altitude" below).
+
+## Custom count mode
+
+If the arguments contain a bare integer N (e.g. `/architecture-meeting-suggestions 8`), switch to **fresh-ideas-only mode**: generate exactly N fresh feature ideas and skip systemic suggestions entirely — do not run Step 4, and Step 5's output (both the printed response and the file/PR) contains only the fresh feature ideas block, no "## Systemic suggestions" header at all. Every other rule for fresh feature ideas (variety, novelty verification, discarded-ideas memory) still applies, just repeated N times instead of 3. If no bare integer is present, run the default mode (3 fresh feature ideas + 3-5 systemic suggestions) as described below.
 
 ## Guilherme's focus areas
 
@@ -179,25 +184,44 @@ Also write all of it (both blocks, fresh feature ideas first) to `/Users/guilher
 open -a TextEdit /Users/guilhermereis/Desktop/clones/shopit-monorepo/arch-suggestions.md
 ```
 
-## Step 6 — Open a draft PR with the findings
+## Step 6 — Open (or update) a draft PR with the findings
 
 Once the file is written and opened, archive the findings as a **draft** PR so they're shareable without touching `main`. Never mark it ready for review — leave it as a draft.
 
-```bash
-# remember the branch we started on so we can return to it
-original_branch=$(git branch --show-current)
+This is side-channel git work — a branch/commit the user didn't ask to be on — so it must run inside an isolated worktree (`EnterWorktree`/`ExitWorktree`), never as a direct `git checkout -B ...` in the shared primary working directory. A `git status` check moments earlier proves nothing about the moment the checkout actually runs — a concurrent session on the same machine/repo can switch branches or commit in that same directory in between. Physical isolation via a worktree is the only real guarantee.
 
-git checkout -B "arch-notes/$(date +%Y-%m-%d)" main
+**Default case — no existing PR to update**: `EnterWorktree` (creates a fresh worktree branched from `origin/main`), then inside it:
+
+```bash
+git checkout -B "arch-notes/$(date +%Y-%m-%d)"
+# (the Write tool call for arch-suggestions.md happens against this worktree's path)
 git add arch-suggestions.md
 git commit -m "docs: architecture sync suggestions $(date +%Y-%m-%d)"
 git push -u origin HEAD --force-with-lease
 
 gh pr create --draft \
   --title "Architecture sync suggestions — $(date +%Y-%m-%d)" \
-  --body "$(cat /Users/guilhermereis/Desktop/clones/shopit-monorepo/arch-suggestions.md)"
-
-git checkout "$original_branch"
-rm /Users/guilhermereis/Desktop/clones/shopit-monorepo/arch-suggestions.md
+  --body-file arch-suggestions.md
 ```
 
-Report the draft PR URL in the response. The findings live on the PR/branch now, so delete the local root-level copy once the PR is created — don't leave it sitting untracked on whatever branch the user returns to. This is a **docs-only** branch dedicated to notes — it's fine to force-push over a same-day rerun. Do not run this step if the working tree has unrelated uncommitted changes beyond `arch-suggestions.md`; if `git status` shows other modified/staged files, stop and tell the user instead of committing their in-progress work.
+**If the user points at an existing draft PR to update instead of creating a new one** (e.g. "update PR #624", or a PR URL passed as an argument): inside the worktree, check out that PR's existing branch instead of cutting a new one —
+
+```bash
+gh pr view <number> --repo <owner>/<repo> --json headRefName -q .headRefName
+git fetch origin <headRefName>
+git checkout -B <headRefName> origin/<headRefName>
+# write the updated arch-suggestions.md, then:
+git add arch-suggestions.md
+git commit -m "docs: architecture sync suggestions $(date +%Y-%m-%d) — <short reason, e.g. 8 fresh feature ideas>"
+git push origin HEAD:<headRefName>
+
+gh pr edit <number> --repo <owner>/<repo> \
+  --title "Architecture sync suggestions — $(date +%Y-%m-%d)" \
+  --body-file arch-suggestions.md
+```
+
+Either way, once pushed, `ExitWorktree` with `action: "remove", discard_changes: true` — safe, since the commit already lives on the remote branch. Then delete the local root-level copy at `/Users/guilhermereis/Desktop/clones/shopit-monorepo/arch-suggestions.md` (the one written in Step 5, in the *original* working directory, not the worktree copy) — don't leave it sitting untracked on whatever branch the user returns to.
+
+`git commit`/`gh pr create`/`gh pr edit` prefer `--body-file` over `--body "$(cat ...)"` — a command substitution around a git-adjacent command can read as "too complex to verify" inside a worktree sandbox. If a pre-commit hook needs `node` on PATH and sourcing `nvm` is blocked as unverifiable, prepend the version's bin dir directly instead: `export PATH="$HOME/.nvm/versions/node/vX.Y.Z/bin:$PATH"`. A docs-only commit can still get blocked by a repo-wide pre-commit hook (e.g. a full typecheck) failing on pre-existing, unrelated errors unconnected to `arch-suggestions.md` — `--no-verify` is fine there specifically, not as a general habit.
+
+Report the draft PR URL in the response. This is a **docs-only** branch dedicated to notes — it's fine to force-push over a same-day rerun (when cutting a fresh dated branch) or to push a follow-up commit (when updating an existing PR's branch). Do not run this step if the *original* working directory has unrelated uncommitted changes beyond `arch-suggestions.md`; if `git status` there shows other modified/staged files, stop and tell the user instead of committing their in-progress work.

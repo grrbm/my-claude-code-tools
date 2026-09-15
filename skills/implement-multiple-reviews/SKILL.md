@@ -88,15 +88,19 @@ For each PR URL, in the order given:
 
    c. Identify pending items: only act on comments/reviews requesting changes that have NOT already been addressed in a subsequent commit or reply, plus any design mismatch surfaced in (b2). Read ALL comments, reviews, and the linked ticket before touching any code. Never implement something that is already resolved.
 
+      **If a change was requested but you determine it's already been fixed** — a prior commit already pushed the fix (check the branch's own history/remote, not just whether *this* session made edits) but no top-level `gh pr comment` summarizing that fix was ever posted for that round — that is NOT the same as "no requested changes exist." Skip straight to (f) and post the summary comment now, describing what was already fixed and why, exactly as if you'd just implemented it. On PR #631, an earlier run had already pushed the fix commit but the summary-comment step never ran; the next invocation incorrectly treated the whole PR as "nothing pending," never called (f), and left the reviewer's `CHANGES_REQUESTED` review with no reply at all. Only skip past (f) with no comment when the PR genuinely never had any requested changes to respond to in the first place.
+
    d. Check out the PR branch if not already on it: `gh pr checkout <number>`. If the branch does not exist locally, check it out automatically. This runs inside the worktree entered above — never in the shared primary working directory.
+
+      If the checkout fails because the branch is already checked out in a *different* git worktree (not the shared primary working directory — e.g. a leftover or concurrently-running worktree from another invocation of this skill), do not `cd` into or otherwise touch that other worktree. Verify state read-only from here instead: `git ls-remote origin refs/heads/<branch>`, `git fetch origin <branch> --quiet && git log --oneline -5 origin/<branch>`, and `gh pr view <number> --json reviewDecision,statusCheckRollup` — enough to tell whether requested changes are already fixed on the remote per (c). This still does not exempt you from (f).
 
    e. Implement all pending requested changes. Fully implement each one — no placeholder TODOs. Follow all existing code conventions. If a review comment is ambiguous, make a reasonable judgment and note it in the summary comment. Do not ask for confirmation before implementing — just do it.
 
-   f. Post a single comment on the PR via `gh pr comment <number> --body "..."` summarizing what was changed and why (one bullet per addressed item) and any items intentionally skipped with the accurate reason. Never say "out of scope" for an open question — the real reason is that it requires team input that an implementation pass alone cannot resolve; say that instead.
+   f. Post a single comment on the PR via `gh pr comment <number> --body "..."` summarizing what was changed and why (one bullet per addressed item) and any items intentionally skipped with the accurate reason. Never say "out of scope" for an open question — the real reason is that it requires team input that an implementation pass alone cannot resolve; say that instead. **This step runs whenever the PR had any requested changes to respond to** — including the case in (c) where the fix turns out to already be on the remote from an earlier run and only the comment itself is missing. The only time this step is skipped entirely is when the PR never had requested changes in the first place.
 
    Do NOT commit or push in this step — the commit+push is step 3.
 
-2. **Check for changes.** Run `git status --porcelain`. If it's empty, nothing was pending for this PR — skip straight to step 4 (there's nothing to commit/push, but this PR may still be selected for self-review).
+2. **Check for changes.** Run `git status --porcelain`. If it's empty, there's nothing new to commit/push for this PR — skip straight to step 4. This is independent of (f): if the PR had requested changes that turned out to already be fixed on the remote (see step 1.c/1.d), (f) still ran and posted a comment even though this step finds no local diff to commit.
 
 3. **Commit and push** (only if step 2 found changes).
    - Stage exactly the files modified in step 1, listed individually via `git add <file1> <file2> ...` — never `git add -A` or `git add .`.
@@ -158,7 +162,7 @@ Then produce the final summary described below.
 - Self-review is opt-in per PR and defaults to off (`none`) — a plain "implement review changes on PR #1, #2, #3" with no mention of self-review must behave exactly as it did before this option existed.
 - Do not ask for confirmation between PRs — process the whole list unattended once started.
 - If the review-implementation step (Step 2, item 1) fails outright for one PR (bad URL, PR not found, checkout fails), report the failure for that PR specifically and continue on to the next one rather than aborting the whole batch. Do not attempt its self-review step even if selected.
-- If a PR has nothing pending, say so plainly in the final summary rather than silently skipping it — it may still get a self-review pass if selected.
+- If a PR has nothing pending — no reviewer ever requested changes — say so plainly in the final summary rather than silently skipping it; it may still get a self-review pass if selected. If a reviewer *did* request changes but you find they were already fixed by an earlier push, that's not "nothing pending": step 1.f's summary comment is still owed and must be posted before moving on (see the PR #631 incident in step 1.c/1.f).
 - Never force-push.
 - Never prefix `git`/`gh` commands with `cd /path/to/repo &&` — the working directory is already this run's worktree (entered in Step 2), not the main project root.
 - Never raise or bypass the 6-round self-review auto-continue cap, and never skip the counter-file wait as a shortcut to reach the next PR sooner — the whole point of waiting is to keep this run's worktree conflict-free.
