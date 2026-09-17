@@ -91,16 +91,26 @@ If a conflict is ambiguous and you are not confident in the correct resolution, 
 
 - Show `git log --oneline origin/main..HEAD` so the user can verify the commit stack.
 - Show `git diff origin/main...HEAD --stat` for a file-level summary.
-- Remind the user: **the branch has NOT been pushed.** Its local ref now carries the rebased commits regardless of where it's checked out — it can be pushed from anywhere in this repo, including the shared primary working directory, with `git push --force-with-lease origin <branch>`; there is no need to `cd` into this worktree to do it.
+- Note this PR's branch name (and whether it rebased clean or needed conflict resolution) — it feeds the consolidated command list printed once in **Finishing up**, rather than repeating the push reminder per PR.
 
 ## Finishing up (both modes)
 
 Once all PR(s) for this invocation are done (or the run is halted early with work already applied), call `ExitWorktree` with `action: "keep"` — **never `"remove"`**. This skill never pushes, so a rebased branch exists nowhere but this worktree's local ref until the user pushes it; removing the worktree would delete whichever branch is currently checked out in it, discarding that unpushed rebase.
 
 Report:
-- The worktree's absolute path, for the record (the user does not need to visit it — see Step 5).
 - In bulk mode, a summary of every PR processed: which rebased cleanly, which needed conflict resolution (and what was resolved), which were skipped and why.
-- A reminder that this worktree will persist on disk (nothing here is auto-removed) — once the user has pushed the branch(es) they want, they can clean it up with `git worktree remove <path>` from the shared primary working directory.
+- The worktree's absolute path, for the record (the user does not need to visit it otherwise).
+- **A single consolidated, copy-pasteable command block** — this is the actionable output of the whole run, not just a reminder. List, in this order:
+  1. One `git push --force-with-lease origin <branch>` line for **every** PR branch that came out of this run with rebased-but-unpushed commits (one line per branch — bulk mode can produce several; skip any PR that was skipped or hit an unresolved conflict).
+  2. One trailing `git worktree remove <path>` line for this run's worktree, using its actual absolute path — this only becomes safe *after* every push above has landed, so say so plainly right above the block (e.g. "run the pushes first, then the worktree removal — removing it before pushing would discard the rebase").
+
+  Example shape for a bulk run with two rebased PRs:
+  ```bash
+  git push --force-with-lease origin feat/sho-501-example
+  git push --force-with-lease origin fix/sho-512-other-example
+  git worktree remove /path/to/.claude/worktrees/rebase-pr-bulk-<short-id>
+  ```
+  These commands work from anywhere in the repo (no need to `cd` into the worktree first) — except `git worktree remove`, which can be run from anywhere *except* the worktree being removed.
 
 If `ExitWorktree` itself fails, note that in the final summary rather than leaving the user to discover a stray worktree later.
 

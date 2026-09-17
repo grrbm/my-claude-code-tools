@@ -22,7 +22,15 @@ gh pr view <pr> --json number,url,title,body,headRefName -R <owner>/<repo>
 
 Find the section describing manual testing. `create-pr`'s template guarantees a `## How to manually test this` heading on every PR opened through it, but be flexible the same way `format-pr-screenshots` is about its own heading — also match `## Manual Testing`, `## How to Test`, `## Testing`, case-insensitively. The section runs from that heading to the next `##` heading or end of body.
 
-If no such section exists, or it's empty/just says "N/A", tell the user plainly and move on to the next PR — don't invent test steps for a PR that never described any, and don't let one PR's missing section abort the whole batch.
+### Step 1a — If no such section exists, write one — don't skip the PR
+
+A missing manual-test section is not a reason to stop; it's a gap to fill before testing, same as you'd fix a bug found mid-scenario in Step 5. Derive the scenario list yourself from what the PR *does* say, in this priority order:
+
+1. **"Merge invariant" / "What should reviewers focus on?"** — these usually name the exact component, screen, or interaction path reviewers should exercise; turn each concrete behavioral claim into an on-device step.
+2. **The "What this changes (plain English)" summary** — mine it for user-facing flows (screens opened, buttons tapped, states shown).
+3. **The QA section's test descriptions** — a unit test named "blocks add-to-cart for gifted items" implies an on-device scenario: reproduce that same condition by hand and screenshot the result.
+
+Write the synthesized steps as a real `## How to manually test this` section and add it to the PR body with `gh pr edit <number> -R <owner>/<repo> --body-file <tmp>` (insert it in the same slot `create-pr`'s template uses — right after `## Merge invariant` and before `## QA` — so the PR reads naturally; leave every other section byte-for-byte unchanged). Then treat that section as the input to Step 2, same as if the author had written it. Only if the PR body genuinely gives you nothing to derive steps from (no invariant, no reviewer-focus notes, no user-facing summary — e.g. a pure internal refactor or config change) should you tell the user plainly and move to the next PR without inventing steps from nothing.
 
 ### Step 2 — Separate what's actually testable on a simulator
 
@@ -93,5 +101,5 @@ Do not begin Step 3 (or any simulator interaction) for PR N+1 until PR N has cle
 
 - Do not ask for confirmation before starting a PR, between its steps, before driving the simulator, or before posting the screenshots into the PR (Step 6) — the point of this skill is to actually run the testing and land the evidence, not describe it or hand it back. Step 6 only ever appends a `## Manual testing` section and never touches the rest of the body, so it needs no gate; the one place that genuinely stops is Step 6's fallback, when there's no authenticated browser session to mint the upload.
 - Never skip Step 5's bug-fix-first rule to keep a batch moving faster. A screenshot of broken behavior isn't a faster path through this pipeline, it's a wrong one.
-- If a PR fails outright — can't be fetched, has no testable manual-test section, or the simulator/backend setup can't be made to reflect the PR's branch — report exactly what failed and why for that PR, then continue to the next PR rather than aborting the whole batch.
+- If a PR fails outright — can't be fetched, has genuinely nothing in its body to derive testable steps from (see Step 1a), or the simulator/backend setup can't be made to reflect the PR's branch — report exactly what failed and why for that PR, then continue to the next PR rather than aborting the whole batch.
 - At the end, report one line per PR: whether it completed cleanly (with the final PR URL), what bugs — if any — were found and fixed along the way, or exactly what failed and at which step.
