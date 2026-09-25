@@ -202,6 +202,20 @@ Generation is not instant (roughly 1-2 min per simple frame, 3-5+ min for a dens
 each `pen` call with a generous timeout (10 min) and tell the user upfront it'll take a few
 minutes per screen.
 
+**Create the mockup branch — once per feature, before the first `pen` call.** Every `.pen`
+canvas gets a matching `mockup/<feature-slug>` branch the moment its canvas is started, whether
+or not a code spike ever ends up happening for it — so there's a branch ready for the user to
+check out and build on once the design is approved, without them having to remember to cut one
+later. This is a bare branch pointer, not a checkout: run
+`git branch mockup/<feature-slug> <current-branch-HEAD>` from the primary working directory. It
+does not touch the working tree, switch `HEAD`, or need a worktree, so it's safe to run even
+with unrelated uncommitted changes sitting around (check first with
+`git show-ref --verify --quiet refs/heads/mockup/<feature-slug>`; skip creation if it already
+exists — e.g. a second canvas session for the same feature-slug, or a spike from an earlier run
+already made it). Tell the user the branch name once it's created. It stays purely local — never
+push it. If a CHANGE frame later needs a spike (below), that work commits onto this same branch
+instead of cutting a new one.
+
 Build it incrementally, one `pen` call per new frame, chaining `--in`/`--out` so every call sees
 the canvas so far:
 
@@ -237,9 +251,9 @@ existing screen, or a NEW screen:
      session as step 3). This is the highest fidelity — it *is* the app plus the delta — and it
      shows states a screenshot of today can't (a new filter active, a new row type). It doubles
      as an implementation spike.
-     - **Always cut a dedicated branch** off the working branch's `HEAD`, named
-       `mockup/<feature-slug>`, and **commit** the spike edits there so the screenshots stay
-       reproducible. Commit subject `spike(design): <feature> mockup changes for review
+     - **Check out the `mockup/<feature-slug>` branch already created above**
+       (`git checkout mockup/<feature-slug>`) and **commit** the spike edits there so the
+       screenshots stay reproducible. Commit subject `spike(design): <feature> mockup changes for review
        screenshots`, body noting it is a throwaway visual spike, not for merge. Never PR or
        merge it. Never add assistant attribution (CI gate). On this repo the husky pre-commit
        hook needs `node` on PATH, which this machine lacks — commit the spike with
@@ -274,10 +288,21 @@ existing screen, or a NEW screen:
 canvas?** This is the one block of prose allowed — because the user writes it, not you.
 
 - If yes: they give you the text. Add it with a `pen --in ... --out ... --prompt` call that
-  places a text layer at the top of the canvas headed `<Name>'s commentary` (e.g. `Guilherme's
-  commentary`), containing their words **verbatim** — quote the exact text in the prompt so the
-  agent doesn't paraphrase it, and check the exported PNG afterward to confirm it wasn't altered
-  or tightened. Treat each line break they mark as a paragraph break.
+  places a text layer headed `<Name>'s commentary` (e.g. `Guilherme's commentary`), containing
+  their words **verbatim** — quote the exact text in the prompt so the agent doesn't paraphrase
+  it, and check the exported PNG afterward to confirm it wasn't altered or tightened. Treat each
+  line break they mark as a paragraph break (e.g. "break 2 lines here" means a blank line between
+  paragraphs, and that instruction itself is not part of the text).
+- **Placement is a general rule: the commentary block always comes first, before everything
+  else on the file.** It is its own top-level frame, sitting **above and outside** the main gray
+  "Canvas" frame that holds the rows of screens (a sibling of that frame at the document root,
+  ~64px gap above it, left-aligned with it) — never nested inside the rows frame, never beside or
+  below the screens. Say this explicitly in the `pen --prompt`, and don't shift the rows or
+  frames inside the gray frame to make room (the block lives outside it, so nothing inside needs
+  to move). After the call, crop the top of the exported PNG and confirm the block is above the
+  gray frame, not inside it. If an existing canvas has the block inside the gray frame, retrofit
+  it: reparent the block to the document root above the frame, then shift the rows back up so the
+  frame's original top padding returns, keeping every relative spacing identical.
 - **Always wrap the commentary text in a light, opaque background container** (e.g. `#FAF9F7`
   paper tone or `#FFFFFF`, ~24-32px padding, a subtle rounded corner) in the same prompt that adds
   the text — never leave commentary text floating directly on the bare canvas. Dark ink text
@@ -309,6 +334,21 @@ editor throughout this session, even while the user's actual frontmost window cl
 target file open and visibly correct (confirmed by screenshots). Don't use it to verify an `open`
 call worked, and don't treat its "welcome doc active" report as meaning the real file isn't open —
 it's simply unreliable for this. Trust what the user reports seeing on screen instead.
+
+**A `.pen` file saved by the pen.dev desktop app can be unreadable to the `pen` CLI.** The app
+writes newer file-format versions (seen: app saves `"version": "2.18"`, CLI 0.3.7 only reads
+`2.17`). When the CLI can't read the `--in` file it loads an EMPTY canvas ("0 top-level nodes",
+or "Unsupported file format: 2.18" in `pen interactive`), and at the end it still saves that empty
+document to `--out`, so `--in X --out X` overwrites the real file with ~1 KB (happened twice on a
+checklist canvas: 210 KB down to 1,054 bytes). Symptoms: the agent reports an empty canvas or
+asks you to "reload the file". Check before editing: `python3 -c "import json;print(json.load(open('X.pen'))['version'])"`
+and compare with what the CLI supports. Rules for every edit of an existing canvas:
+(1) `cp X.pen X.backup.pen` first; (2) write to a scratch file (`--in X.pen --out X.work.pen`)
+and only `cp` it over X after checking the size is sane and the exported PNG shows every frame;
+(3) if the version is newer than the CLI supports, stop: the fix is upgrading the CLI
+(`bun add -g @pen.dev/cli@latest`, a user-owned action), not opening/closing files; (4) note
+that just opening a file in the desktop app and saving can bump its version, so avoid opening
+canvases in the app between CLI edits if the CLI is older than the app.
 
 **The live app does not reliably pick up external edits made by the `pen` CLI while the file is
 already open in it.** After a `pen --in ... --out <same-file>.pen` call from this skill's step 5/6
@@ -358,3 +398,8 @@ the approved screens — that's `linear-implement-task`, not this skill.
   stay in the conversation with the brief.
 - If the user only wants the written breakdown and no mockups, stop after step 4 and say so —
   don't force the canvas.
+- **Every feature gets a `mockup/<feature-slug>` branch**, created as a bare pointer the moment
+  its canvas is started (step 5) — regardless of whether a spike ever adds commits to it. It's
+  there so the user can pick the design back up for real implementation once it's approved,
+  without a separate "cut a branch" step. List them all with `git branch --list 'mockup/*'`.
+  They're local only; nothing about this skill pushes one.
