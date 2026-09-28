@@ -5,6 +5,14 @@ argument-hint: <pr-url>
 allowed-tools: Bash(curl *), Bash(gh *), Bash(git *), Bash(agent-browser:*), Bash(xcrun *), Read
 ---
 
+> **Headful simulator only.** Never drive, screenshot or record a headless simulator. On Xcode 27 the simulator
+> window is hosted by **DeviceHub** (`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`, bundle id
+> `com.apple.dt.Devices`); there is no `Simulator.app` any more. Before touching the device, make sure it is running:
+> `pgrep -x DeviceHub || open -b com.apple.dt.Devices` (older Xcode: `open -a Simulator`), and that the iPhone 16e is
+> booted. `bun run ios` (`expo run:ios`) also opens it. If the window host cannot be opened, **stop and tell the
+> user**; do not continue headless. (Headless also hides the QWERTY keyboard until text is typed, which makes
+> keyboard checks and recordings misleading.)
+
 Verify the PR at $ARGUMENTS matches its Linear ticket's design pictures, copy those pictures into a PR comment, and report exactly how closely the shipped UI follows them.
 
 This composes three things this repo already has working mechanics for, rather than re-deriving any of them: `linear-implement-task`'s design-hunt technique (Step 3a — find every design picture in a Linear ticket, not just the description), `ios-simulator` for driving the app to capture the current UI, and `post-screenshots-to-pr`'s upload technique for minting real `user-attachments/assets/` URLs GitHub will render inline. Read those if a mechanic below is unclear — don't guess at a shape this repo has already solved.

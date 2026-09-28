@@ -4,6 +4,14 @@ description: Drive the iOS Simulator through a feature the way a user would, rec
 argument-hint: <pr-url | feature description> [steps to perform]
 ---
 
+> **Headful simulator only.** Never drive, screenshot or record a headless simulator. On Xcode 27 the simulator
+> window is hosted by **DeviceHub** (`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`, bundle id
+> `com.apple.dt.Devices`); there is no `Simulator.app` any more. Before touching the device, make sure it is running:
+> `pgrep -x DeviceHub || open -b com.apple.dt.Devices` (older Xcode: `open -a Simulator`), and that the iPhone 16e is
+> booted. `bun run ios` (`expo run:ios`) also opens it. If the window host cannot be opened, **stop and tell the
+> user**; do not continue headless. (Headless also hides the QWERTY keyboard until text is typed, which makes
+> keyboard checks and recordings misleading.)
+
 Record a narrated demo video of: $ARGUMENTS
 
 The whole job: get the app onto the right branch and running, script the steps in one Python process (no
@@ -52,6 +60,11 @@ If a design or a Linear ticket is referenced, check its comments too.
   address". A VPN does not change device location.
 - **Permission prompts**: `xcrun simctl privacy <udid> reset location <bundle>` so the system alert shows again.
   Once "Allow" was chosen it never reappears by itself.
+- **Locale**: the simulator here was on `pt_BR`, so the gift sheet parsed a typed phone number as `+55…` (it uses
+  `getDeviceRegion()`) and the payment sheet showed "US$ 42,80". Set it to US and reboot the device:
+  `xcrun simctl spawn <udid> defaults write NSGlobalDomain AppleLocale -string en_US`,
+  `… AppleLanguages -array en`, then `xcrun simctl shutdown/boot <udid>` and set the location again. The keyboard
+  can stay Portuguese ("maiúsculas", "retorno"); that is a separate setting.
 - **Signed out start**: `lib.sign_out()` (Home → Open profile → Open settings → Sign out → confirm "Sign Out").
 - **Fresh account**: sign-in is by phone number and a real SMS is impossible. Clerk dev instances accept fictional
   numbers `+1 (xxx) 555-0100` … `0199` with the fixed code **424242**, so enter e.g. `2015550103`.
@@ -87,9 +100,53 @@ Copy `scripts/flow_example.py` next to your work dir and rewrite the steps. Rule
   (`raw.mp4 marks.tsv start.epoch end.epoch`) and reset state before the next take.
 - If a step reveals a real bug, stop recording and fix it (typecheck, `biome check`, tests) before re-recording,
   same rule as `do-all-manual-testing` Step 5. Never film over a known bug.
-- **Never complete a payment.** Stop when the Stripe sheet ("Pay US$ …", TEST badge) appears.
+- **Payments:** only pay when the demo needs the payment to create the thing being shown (for example sending a
+  gift, which the giftee side then claims), and only in **Stripe TEST mode** (the "TEST" badge is on the sheet).
+  Use the card the user gave for the run; the default they gave was `4242 4242 4242 4242`, exp `03/33`, CVC `333`,
+  email `grrbm2@gmail.com`, any US ZIP (e.g. 94105). If the payment does not go through, **flag it to the user and
+  wait for instructions**; do not retry variations. If the auto-mode classifier blocks the Pay tap as a real-world
+  transaction, stop and ask; do not work around it or create the object another way (a Convex mutation, etc.).
+  When the demo does not need a paid object, stop at the payment sheet without paying.
 
 Run it: `DEMO_DIR=<out dir> python3 flow.py`. Everything is written to `$DEMO_DIR`.
+
+### Gift flow and Stripe payment sheet (what worked in the dry run)
+
+- The For You feed and search differ per account, and search may return nothing. Do not assume the same product is
+  reachable. Pick any visible physical product under $100; some have sizes (tap `Size, Medium` first). If a card is
+  off-screen, tap fails with "off-screen and not safe": `agent-device scroll down` first.
+- Signed-out `Send Gift` opens the phone sign-in sheet titled "Send this gift"; after sign-in you land back on the
+  product page and must tap `Send Gift` again. The recipient picker takes a typed number (`Search friends or enter a
+  phone number`) and shows a row like `+1 (201) 555-0104`; tap that row. Then the composer (note, hide price,
+  `Review and pay`). A new gifter is asked for an email first, and the typed note was gone afterwards.
+- Stripe PaymentSheet fields: `Card number`, `expiration date`, `CVC`, `Email`, `ZIP`. Filling the expiry reports
+  `TEXT_ENTRY_MISMATCH` although the value is accepted (it becomes `12/34`); once a field has text its label is its
+  value. Fill each field once, do not retry. The keyboard hides the Pay button and `agent-device keyboard dismiss`
+  fails; `agent-device scroll down` reveals an enabled `Pay $…` button.
+- Fields that already hold text open the edit menu (Select / Select All) when pressed; use the field's
+  `Clear search` / clear button first, then fill.
+
+### Recipient (giftee) side of a gift, and one-shot accounts
+
+- A gift is tied to the recipient's phone number, and a Clerk test number can only be signed up once, so the
+  recipient flow **cannot be dry-run**: the first sign-in uses the number up. Plan it from the code, then record it once.
+- Open the claim link the way a recipient would: on the gifter's gift screen tap `Copy link`, read it with
+  `xcrun simctl pbpaste <udid>` (`https://app.shopit.store/gift/<id>`), then `xcrun simctl openurl <udid> <that https
+  link>`. The `https` link opens the sealed gift with a "Sign in to open your gift from …" sheet. The `shopit://gift/<id>`
+  scheme did **not** route. A gifter who never gave a name shows up as "Someone".
+- Because a one-shot flow is driven step by step, use `scripts/rec.py start|mark "text"|stop` (a detached recorder) and
+  short driving phases instead of one script. The dead time between phases is then removed with LaunchReel `clips`
+  (source-time ranges); segment times are on the **cut** timeline, so add up the kept clip lengths to place them.
+- After sign-out the app can sit on the generic "Send with Love" sheet, which does not dismiss; opening the claim
+  link goes straight through it.
+
+- **Worked examples for a gift demo**: `scripts/flow_gift_sender.py` (signed-out sender, name+email sheet, Stripe TEST
+  payment, saves `claim-link.txt`) and `scripts/flow_gift_recipient.py` (claim link, sign-in, name+email, address via
+  location, accept). Both use a fresh phone-number constant (`GIFTER`/`GIFTEE`); bump it every take. Once the flow
+  is known, the recipient side can be scripted in one pass like the sender side. Their paths to the scratch dir are
+  hard-coded; adjust them.
+- `lib.fill` fills directly and only presses to focus as a last resort. Pressing first is wrong on the code screen:
+  the number pad is already up and the press types a digit, which changes the field's label.
 
 ## Step 4 — Work out the video timeline (do not trust the marks)
 

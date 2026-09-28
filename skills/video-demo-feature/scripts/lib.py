@@ -10,7 +10,7 @@ Import from a flow script that lives next to this file (or add this folder to sy
 Config (environment variables, all optional):
     DEMO_DIR        where raw.mp4, marks.tsv, start/end epochs are written (default: ./demo-out)
     SIM_UDID        simulator to record and drive (default: the booted "iPhone 16e")
-    APP_DIR         directory agent-device is run from (default: <repo>/apps/mobile)
+    APP_DIR         directory agent-device is run from (default: apps/mobile found above the cwd)
     DEMO_NO_RECORD  set to 1 for a dry run: same steps, no recording, marks are only printed
 """
 import contextlib
@@ -26,18 +26,30 @@ os.makedirs(DEMO_DIR, exist_ok=True)
 DRY_RUN = os.environ.get('DEMO_NO_RECORD') == '1'
 
 
-def _repo_root():
-    return subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+def _find_app_dir():
+    # Walk up from the current directory to the folder holding apps/mobile. Do not use
+    # `git rev-parse`: .claude/ is a nested git repo, so from a skill script it returns .claude.
+    # Try the current directory first, then this file's own location (the skill lives inside the repo,
+    # so this still works when the flow script is run from a scratch directory outside it).
+    for start in (os.getcwd(), os.path.dirname(os.path.abspath(__file__))):
+        d = start
+        while d != os.path.dirname(d):
+            if os.path.isdir(os.path.join(d, 'apps', 'mobile')):
+                return os.path.join(d, 'apps', 'mobile')
+            d = os.path.dirname(d)
+    raise SystemExit('Could not find apps/mobile above the current directory; set APP_DIR')
 
 
 # agent-device sessions are keyed by the directory it is run from. A session opened from another
 # directory holds the device and every later call fails with DEVICE_IN_USE, so always use this one.
-APP_DIR = os.environ.get('APP_DIR') or os.path.join(_repo_root(), 'apps', 'mobile')
+APP_DIR = os.environ.get('APP_DIR') or _find_app_dir()
 
 ENV = dict(os.environ)
+# Put the NVM node that actually has agent-device first (several node versions are installed and it
+# lives under only one of them), then the rest, so `node` is found too.
 _nvm_bins = sorted(glob.glob(os.path.expanduser('~/.nvm/versions/node/*/bin')))
-if _nvm_bins:
-    ENV['PATH'] = _nvm_bins[-1] + ':' + ENV['PATH']
+_with_tool = [b for b in _nvm_bins if os.path.exists(os.path.join(b, 'agent-device'))]
+ENV['PATH'] = ':'.join(_with_tool + [b for b in _nvm_bins if b not in _with_tool] + [ENV['PATH']])
 
 
 def _booted_udid(name='iPhone 16e'):
@@ -48,6 +60,27 @@ def _booted_udid(name='iPhone 16e'):
     return m.group(1)
 
 
+def ensure_headful():
+    """Never drive or record a headless simulator: it hides the QWERTY keyboard until text is typed, so
+    keyboard checks and recordings mislead. The window host is DeviceHub on Xcode 27 (Simulator.app on
+    older Xcode). Open it, or stop and tell the user."""
+    hosts = ('DeviceHub', 'Simulator')
+
+    def running():
+        return any(subprocess.run(['pgrep', '-x', h], capture_output=True).returncode == 0 for h in hosts)
+    if running():
+        return
+    for cmd in (['open', '-b', 'com.apple.dt.Devices'], ['open', '-a', 'Simulator']):
+        subprocess.run(cmd, capture_output=True)
+        for _ in range(10):
+            if running():
+                return
+            time.sleep(0.5)
+    raise SystemExit('Neither DeviceHub nor Simulator could be opened, so the simulator would be headless. '
+                     'Stop and tell the user; do not continue or record headless.')
+
+
+ensure_headful()
 UDID = os.environ.get('SIM_UDID') or _booted_udid()
 NODE = re.compile(r'^\s*@(e\d+) \[([^\]]+)\](?: "(.*?)")?(.*)$')
 
@@ -114,17 +147,21 @@ def tap(label, kind=None, timeout=25, exact=False):
 
 
 def fill(label, text, kind='text-field', timeout=25):
-    """Focus first, then fill; a fill straight after a screen change often fails with 'no text input'."""
-    for _ in range(4):
-        n = wait_for(label, kind, timeout)
-        ad('press', n['ref'])
-        time.sleep(0.8)
+    """Fill directly, retrying after a pause ("no text input found" is common while a screen or the keyboard
+    is still animating in). Never press the field first: when the keyboard is already up (the code screen
+    autofocuses), the press can land on a key and type into the field, which changes its label. Only as a
+    last resort, focus the field with a press and retry."""
+    for attempt in range(5):
         n = wait_for(label, kind, timeout)
         out = ad('fill', n['ref'], text)
         print('  fill', label, '->', out.strip().splitlines()[0][:40])
         if 'Filled' in out:
             return
-        time.sleep(1.2)
+        time.sleep(2.0)
+        if attempt == 3:
+            n = wait_for(label, kind, timeout)
+            ad('press', n['ref'])
+            time.sleep(1.0)
     raise SystemExit(f'could not fill {label!r}')
 
 

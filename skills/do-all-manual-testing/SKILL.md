@@ -4,6 +4,14 @@ description: Given one or more GitHub PR URLs, actually performs the on-device m
 argument-hint: <pr-url-1> [<pr-url-2> ...]
 ---
 
+> **Headful simulator only.** Never drive, screenshot or record a headless simulator. On Xcode 27 the simulator
+> window is hosted by **DeviceHub** (`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`, bundle id
+> `com.apple.dt.Devices`); there is no `Simulator.app` any more. Before touching the device, make sure it is running:
+> `pgrep -x DeviceHub || open -b com.apple.dt.Devices` (older Xcode: `open -a Simulator`), and that the iPhone 16e is
+> booted. `bun run ios` (`expo run:ios`) also opens it. If the window host cannot be opened, **stop and tell the
+> user**; do not continue headless. (Headless also hides the QWERTY keyboard until text is typed, which makes
+> keyboard checks and recordings misleading.)
+
 Actually perform the manual testing described in each PR below, one PR fully to completion before starting the next: $ARGUMENTS
 
 This skill is a composition, not a rewrite, of two existing skills' techniques — it invokes `ios-simulator` for the mechanics of driving the simulator, and `post-screenshots-to-pr` for the mechanics of minting GitHub asset URLs from the screenshots and embedding them in the PR body, rather than duplicating either skill's instructions here. That keeps this pipeline in sync automatically if either of those skills changes, the same reason `do-everything` composes `linear-implement-task`/`create-pr`/`self-review-pr` instead of copying their steps.

@@ -4,6 +4,14 @@ description: Given a plain-English description of what to capture and a target G
 allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*), Bash(gh *), Bash(git *), Bash(python3:*), Bash(xcrun *), Read
 ---
 
+> **Headful simulator only.** Never drive, screenshot or record a headless simulator. On Xcode 27 the simulator
+> window is hosted by **DeviceHub** (`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`, bundle id
+> `com.apple.dt.Devices`); there is no `Simulator.app` any more. Before touching the device, make sure it is running:
+> `pgrep -x DeviceHub || open -b com.apple.dt.Devices` (older Xcode: `open -a Simulator`), and that the iPhone 16e is
+> booted. `bun run ios` (`expo run:ios`) also opens it. If the window host cannot be opened, **stop and tell the
+> user**; do not continue headless. (Headless also hides the QWERTY keyboard until text is typed, which makes
+> keyboard checks and recordings misleading.)
+
 # Skill: Post Screenshots To PR
 
 Takes a description of what the user wants a screenshot of, captures it, and writes it into an
